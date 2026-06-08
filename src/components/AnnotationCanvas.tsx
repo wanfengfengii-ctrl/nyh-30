@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Image as KonvaImage, Rect, Circle, Line, Transformer } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Rect, Circle, Line, Transformer, Text } from 'react-konva';
 import type Konva from 'konva';
 import useImage from 'use-image';
-import { Button, Space, Tooltip, Select, Divider } from 'antd';
+import { Button, Space, Tooltip, Select, Divider, Modal, Form, Input, message, Popconfirm } from 'antd';
 import {
   SelectOutlined,
   BgColorsOutlined,
@@ -13,10 +13,17 @@ import {
   ReloadOutlined,
   UndoOutlined,
   RedoOutlined,
+  MergeCellsOutlined,
+  SplitCellsOutlined,
+  RobotOutlined,
+  SafetyCertificateOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { useApp } from '../store/AppContext';
 import type { ToolType, Annotation, DefectType, Point } from '../types';
 import { DEFECT_TYPE_COLORS, DEFECT_TYPE_LABELS } from '../types';
+import { getConfidenceColor } from '../services/detectionService';
 
 interface AnnotationCanvasProps {
   defaultDefectType: DefectType;
@@ -24,7 +31,21 @@ interface AnnotationCanvasProps {
 }
 
 export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange }: AnnotationCanvasProps) {
-  const { selectedPlate, selectedAnnotation, plateAnnotations, dispatch, canUndo, canRedo, undo, redo } = useApp();
+  const {
+    selectedPlate,
+    selectedAnnotation,
+    selectedAnnotationIds,
+    plateAnnotations,
+    dispatch,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    selectMultipleAnnotations,
+    mergeAnnotations,
+    splitAnnotation,
+    confidenceThreshold,
+  } = useApp();
   const [image] = useImage(selectedPlate?.imageUrl || '', 'anonymous');
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +63,13 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
 
   const [polygonPoints, setPolygonPoints] = useState<Point[]>([]);
   const [isPolygonDrawing, setIsPolygonDrawing] = useState(false);
+
+  const [showConfidence, setShowConfidence] = useState(true);
+  const [showAutoBadge, setShowAutoBadge] = useState(true);
+  const [mergeModalVisible, setMergeModalVisible] = useState(false);
+  const [splitModalVisible, setSplitModalVisible] = useState(false);
+  const [mergeForm] = Form.useForm();
+  const [splitForm] = Form.useForm();
 
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -82,11 +110,19 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
   }, [image, selectedPlate, stageSize]);
 
   useEffect(() => {
-    if (selectedAnnotation && trRef.current && shapeRefs.current[selectedAnnotation.id]) {
-      trRef.current.nodes([shapeRefs.current[selectedAnnotation.id]]);
+    if (selectedAnnotationIds.length > 0 && trRef.current) {
+      const nodes = selectedAnnotationIds
+        .map((id) => shapeRefs.current[id])
+        .filter((node): node is Konva.Node => !!node);
+      if (nodes.length > 0) {
+        trRef.current.nodes(nodes);
+        trRef.current.getLayer()?.batchDraw();
+      }
+    } else if (trRef.current) {
+      trRef.current.nodes([]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [selectedAnnotation]);
+  }, [selectedAnnotationIds]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -291,9 +327,112 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
 
   const handleShapeClick = (e: Konva.KonvaEventObject<MouseEvent>, annotationId: string) => {
     e.cancelBubble = true;
-    if (tool === 'select') {
-      dispatch({ type: 'SELECT_ANNOTATION', payload: annotationId });
+    if (tool === 'select' || tool === 'merge') {
+      const isMultiSelect = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+
+      if (isMultiSelect) {
+        const newSelected = selectedAnnotationIds.includes(annotationId)
+          ? selectedAnnotationIds.filter((id) => id !== annotationId)
+          : [...selectedAnnotationIds, annotationId];
+        selectMultipleAnnotations(newSelected);
+      } else {
+        selectMultipleAnnotations([annotationId]);
+      }
+
+      if (tool === 'merge' && selectedAnnotationIds.length >= 1) {
+        // 当选择了至少一个标注且使用合并工具时，提示用户确认
+      }
     }
+  };
+
+  const handleMerge = () => {
+    if (selectedAnnotationIds.length < 2) {
+      message.warning('请至少选择 2 个标注进行合并（按住 Shift 或 Ctrl 多选）');
+      return;
+    }
+    setMergeModalVisible(true);
+    mergeForm.setFieldsValue({
+      defectType: defaultDefectType,
+      description: `合并 ${selectedAnnotationIds.length} 个标注`,
+    });
+  };
+
+  const handleMergeConfirm = () => {
+    mergeForm.validateFields().then((values) => {
+      mergeAnnotations(selectedAnnotationIds, values);
+      setMergeModalVisible(false);
+      setTool('select');
+      message.success('标注合并成功');
+    });
+  };
+
+  const handleSplit = () => {
+    if (!selectedAnnotation || selectedAnnotationIds.length !== 1) {
+      message.warning('请选择 1 个标注进行拆分');
+      return;
+    }
+    setSplitModalVisible(true);
+    splitForm.setFieldsValue({
+      splitCount: 2,
+    });
+  };
+
+  const handleSplitConfirm = () => {
+    splitForm.validateFields().then((values) => {
+      if (!selectedAnnotation) return;
+
+      const newAnnotations: Partial<Annotation>[] = [];
+      const splitCount = values.splitCount || 2;
+
+      if (selectedAnnotation.shape === 'rectangle') {
+        const partWidth = selectedAnnotation.width / splitCount;
+        for (let i = 0; i < splitCount; i++) {
+          newAnnotations.push({
+            shape: 'rectangle',
+            x: selectedAnnotation.x + i * partWidth,
+            y: selectedAnnotation.y,
+            width: partWidth,
+            height: selectedAnnotation.height,
+            defectType: selectedAnnotation.defectType,
+            severity: selectedAnnotation.severity,
+            description: `拆分标注 ${i + 1}`,
+          });
+        }
+      } else if (selectedAnnotation.shape === 'circle') {
+        const angleStep = (Math.PI * 2) / splitCount;
+        for (let i = 0; i < splitCount; i++) {
+          const angle = i * angleStep;
+          const offsetX = Math.cos(angle) * (selectedAnnotation.radius * 0.5);
+          const offsetY = Math.sin(angle) * (selectedAnnotation.radius * 0.5);
+          newAnnotations.push({
+            shape: 'circle',
+            x: selectedAnnotation.x + offsetX,
+            y: selectedAnnotation.y + offsetY,
+            radius: selectedAnnotation.radius * 0.6,
+            defectType: selectedAnnotation.defectType,
+            severity: selectedAnnotation.severity,
+            description: `拆分标注 ${i + 1}`,
+          });
+        }
+      } else {
+        for (let i = 0; i < splitCount; i++) {
+          newAnnotations.push({
+            shape: 'circle',
+            x: selectedAnnotation.points?.[0]?.x || 0 + i * 20,
+            y: selectedAnnotation.points?.[0]?.y || 0,
+            radius: 15,
+            defectType: selectedAnnotation.defectType,
+            severity: selectedAnnotation.severity,
+            description: `拆分标注 ${i + 1}`,
+          });
+        }
+      }
+
+      splitAnnotation(selectedAnnotation.id, newAnnotations);
+      setSplitModalVisible(false);
+      setTool('select');
+      message.success(`标注已拆分为 ${splitCount} 个`);
+    });
   };
 
   const handleTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
@@ -393,10 +532,27 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
     setTool('select');
   };
 
+  const getAnnotationPosition = (ann: Annotation) => {
+    if (ann.shape === 'rectangle') {
+      return { x: ann.x, y: ann.y, centerX: ann.x + ann.width / 2, centerY: ann.y + ann.height / 2 };
+    } else if (ann.shape === 'circle') {
+      return { x: ann.x - ann.radius, y: ann.y - ann.radius, centerX: ann.x, centerY: ann.y };
+    } else {
+      const xs = ann.points.map((p) => p.x);
+      const ys = ann.points.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      const maxX = Math.max(...xs);
+      const maxY = Math.max(...ys);
+      return { x: minX, y: minY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2 };
+    }
+  };
+
   const renderAnnotation = (ann: Annotation) => {
     const color = DEFECT_TYPE_COLORS[ann.defectType];
-    const isSelected = selectedAnnotation?.id === ann.id;
+    const isSelected = selectedAnnotationIds.includes(ann.id);
     const strokeWidth = isSelected ? 3 / scale : 2 / scale;
+    const dash = ann.isAutoDetected && showAutoBadge ? [4 / scale, 2 / scale] : undefined;
 
     const commonProps = {
       id: ann.id,
@@ -412,43 +568,65 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
       ref: (node: Konva.Node | null) => {
         if (node) shapeRefs.current[ann.id] = node;
       },
+      dash,
     };
 
-    if (ann.shape === 'rectangle') {
-      return (
-        <Rect
-          {...commonProps}
-          x={ann.x}
-          y={ann.y}
-          width={ann.width}
-          height={ann.height}
-        />
-      );
-    }
+    const pos = getAnnotationPosition(ann);
 
-    if (ann.shape === 'circle') {
-      return (
-        <Circle
-          {...commonProps}
-          x={ann.x}
-          y={ann.y}
-          radius={ann.radius}
-        />
-      );
-    }
+    return (
+      <>
+        {ann.shape === 'rectangle' && (
+          <Rect
+            {...commonProps}
+            x={ann.x}
+            y={ann.y}
+            width={ann.width}
+            height={ann.height}
+          />
+        )}
 
-    if (ann.shape === 'polygon') {
-      const flatPoints = ann.points.flatMap((p) => [p.x, p.y]);
-      return (
-        <Line
-          {...commonProps}
-          points={flatPoints}
-          closed={true}
-        />
-      );
-    }
+        {ann.shape === 'circle' && (
+          <Circle
+            {...commonProps}
+            x={ann.x}
+            y={ann.y}
+            radius={ann.radius}
+          />
+        )}
 
-    return null;
+        {ann.shape === 'polygon' && (
+          <Line
+            {...commonProps}
+            points={ann.points.flatMap((p) => [p.x, p.y])}
+            closed={true}
+          />
+        )}
+
+        {showConfidence && (
+          <Text
+            x={pos.x}
+            y={pos.y - 18 / scale}
+            text={`${(ann.confidence * 100).toFixed(0)}%`}
+            fontSize={12 / scale}
+            fill={getConfidenceColor(ann.confidence)}
+            fontStyle="bold"
+          />
+        )}
+
+        {showAutoBadge && ann.isAutoDetected && (
+          <Text
+            x={pos.x + (ann.shape === 'rectangle' ? ann.width : 0) + 4 / scale}
+            y={pos.y}
+            text="AI"
+            fontSize={10 / scale}
+            fill="#fff"
+            fontStyle="bold"
+            padding={3 / scale}
+            align="center"
+          />
+        )}
+      </>
+    );
   };
 
   if (!selectedPlate) {
@@ -480,8 +658,8 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
         alignItems: 'center',
         flexShrink: 0,
       }}>
-        <Space>
-          <Tooltip title="选择/移动">
+        <Space size={4}>
+          <Tooltip title="选择/移动（按住Shift多选）">
             <Button
               type={tool === 'select' ? 'primary' : 'default'}
               icon={<SelectOutlined />}
@@ -519,6 +697,46 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
               取消多边形
             </Button>
           )}
+
+          <Divider type="vertical" style={{ height: 24 }} />
+
+          <Tooltip title={`合并标注（已选 ${selectedAnnotationIds.length} 个）`}>
+            <Button
+              icon={<MergeCellsOutlined />}
+              size="small"
+              onClick={handleMerge}
+              disabled={selectedAnnotationIds.length < 2}
+              type={tool === 'merge' ? 'primary' : 'default'}
+            />
+          </Tooltip>
+          <Tooltip title="拆分标注">
+            <Button
+              icon={<SplitCellsOutlined />}
+              size="small"
+              onClick={handleSplit}
+              disabled={selectedAnnotationIds.length !== 1}
+              type={tool === 'split' ? 'primary' : 'default'}
+            />
+          </Tooltip>
+
+          <Divider type="vertical" style={{ height: 24 }} />
+
+          <Tooltip title={showConfidence ? '隐藏置信度' : '显示置信度'}>
+            <Button
+              icon={showConfidence ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+              size="small"
+              onClick={() => setShowConfidence(!showConfidence)}
+              type={showConfidence ? 'primary' : 'default'}
+            />
+          </Tooltip>
+          <Tooltip title={showAutoBadge ? '隐藏AI标记' : '显示AI标记'}>
+            <Button
+              icon={<RobotOutlined />}
+              size="small"
+              onClick={() => setShowAutoBadge(!showAutoBadge)}
+              type={showAutoBadge ? 'primary' : 'default'}
+            />
+          </Tooltip>
 
           <Divider type="vertical" style={{ height: 24 }} />
 
@@ -631,7 +849,7 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
               </>
             )}
 
-            {selectedAnnotation && tool === 'select' && (
+            {selectedAnnotationIds.length > 0 && tool === 'select' && (
               <Transformer
                 ref={trRef}
                 boundBoxFunc={(oldBox, newBox) => {
@@ -645,6 +863,55 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
           </Layer>
         </Stage>
       </div>
+
+      <Modal
+        title="合并标注"
+        open={mergeModalVisible}
+        onOk={handleMergeConfirm}
+        onCancel={() => setMergeModalVisible(false)}
+        okText="确认合并"
+        cancelText="取消"
+        width={400}
+      >
+        <Form form={mergeForm} layout="vertical">
+          <div style={{ marginBottom: 12, fontSize: 12, color: '#666' }}>
+            将合并 {selectedAnnotationIds.length} 个标注为一个新的矩形标注
+          </div>
+          <Form.Item label="缺陷类型" name="defectType">
+            <Select
+              options={Object.entries(DEFECT_TYPE_LABELS).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="描述" name="description">
+            <Input.TextArea rows={2} placeholder="请输入描述" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="拆分标注"
+        open={splitModalVisible}
+        onOk={handleSplitConfirm}
+        onCancel={() => setSplitModalVisible(false)}
+        okText="确认拆分"
+        cancelText="取消"
+        width={400}
+      >
+        <Form form={splitForm} layout="vertical">
+          <div style={{ marginBottom: 12, fontSize: 12, color: '#666' }}>
+            将当前标注拆分为多个子标注（均匀分布）
+          </div>
+          <Form.Item label="拆分数量" name="splitCount" rules={[{ required: true, message: '请输入拆分数量' }]}>
+            <Input type="number" min={2} max={10} placeholder="2-10" />
+          </Form.Item>
+          <div style={{ fontSize: 11, color: '#999' }}>
+            提示：拆分后可在画布上调整每个子标注的位置和大小
+          </div>
+        </Form>
+      </Modal>
     </div>
   );
 }

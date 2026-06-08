@@ -16,6 +16,8 @@ import {
   Tabs,
   Avatar,
   Typography,
+  Progress,
+  Alert,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -26,12 +28,16 @@ import {
   UserOutlined,
   UndoOutlined,
   RedoOutlined,
+  RobotOutlined,
+  SafetyCertificateOutlined,
+  EditOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import { useApp } from '../store/AppContext';
 import FilterPanel from './FilterPanel';
 import ReviewPanel from './ReviewPanel';
 import AnnotationHistoryPanel from './AnnotationHistoryPanel';
-import type { Annotation, DefectType, Severity, ReviewStatus } from '../types';
+import type { Annotation, DefectType, Severity, ReviewStatus, ModificationReason } from '../types';
 import {
   DEFECT_TYPE_LABELS,
   DEFECT_TYPE_COLORS,
@@ -39,7 +45,9 @@ import {
   SEVERITY_COLORS,
   REVIEW_STATUS_LABELS,
   REVIEW_STATUS_COLORS,
+  MODIFICATION_REASON_LABELS,
 } from '../types';
+import { getConfidenceColor, getConfidenceLabel } from '../services/detectionService';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -383,6 +391,8 @@ function DetailContent({ selectedAnnotation, form, handleValuesChange, handleTog
           description: selectedAnnotation.description,
           suggestion: selectedAnnotation.suggestion,
           reviewStatus: selectedAnnotation.reviewStatus,
+          modificationReason: selectedAnnotation.modificationReason,
+          modificationNote: selectedAnnotation.modificationNote,
         }}
         onValuesChange={handleValuesChange}
         fields={[
@@ -390,6 +400,8 @@ function DetailContent({ selectedAnnotation, form, handleValuesChange, handleTog
           { name: 'severity', value: selectedAnnotation.severity },
           { name: 'description', value: selectedAnnotation.description },
           { name: 'suggestion', value: selectedAnnotation.suggestion },
+          { name: 'modificationReason', value: selectedAnnotation.modificationReason },
+          { name: 'modificationNote', value: selectedAnnotation.modificationNote },
         ]}
       >
         <Form.Item label="缺陷类型" name="defectType">
@@ -423,6 +435,66 @@ function DetailContent({ selectedAnnotation, form, handleValuesChange, handleTog
           />
         </Form.Item>
 
+        {selectedAnnotation.isAutoDetected && (
+          <Alert
+            message={
+              <Space>
+                <RobotOutlined />
+                <span>AI自动检测生成</span>
+                <Tag color={getConfidenceColor(selectedAnnotation.confidence)}>
+                  置信度 {(selectedAnnotation.confidence * 100).toFixed(1)}%
+                </Tag>
+              </Space>
+            }
+            type="info"
+            showIcon={false}
+            style={{ marginBottom: 12 }}
+          />
+        )}
+
+        {selectedAnnotation.isAutoDetected && selectedAnnotation.autoConfidence !== undefined && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+              AI检测置信度: {getConfidenceLabel(selectedAnnotation.confidence)}
+            </div>
+            <Progress
+              percent={Math.round(selectedAnnotation.confidence * 100)}
+              size="small"
+              strokeColor={getConfidenceColor(selectedAnnotation.confidence)}
+            />
+          </div>
+        )}
+
+        {selectedAnnotation.isAutoDetected && selectedAnnotation.autoDetectType && (
+          <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f5f5f5', borderRadius: 4, fontSize: 12 }}>
+            <div style={{ color: '#666', marginBottom: 4 }}>AI原始检测类型</div>
+            <Tag color={DEFECT_TYPE_COLORS[selectedAnnotation.autoDetectType]}>
+              {DEFECT_TYPE_LABELS[selectedAnnotation.autoDetectType]}
+            </Tag>
+          </div>
+        )}
+
+        {selectedAnnotation.modificationReason && (
+          <Alert
+            message={
+              <Space direction="vertical" size={2}>
+                <Space>
+                  <EditOutlined />
+                  <span>人工修订原因: {MODIFICATION_REASON_LABELS[selectedAnnotation.modificationReason]}</span>
+                </Space>
+                {selectedAnnotation.modificationNote && (
+                  <span style={{ fontSize: 11, color: '#666', marginLeft: 18 }}>
+                    备注: {selectedAnnotation.modificationNote}
+                  </span>
+                )}
+              </Space>
+            }
+            type="warning"
+            showIcon={false}
+            style={{ marginBottom: 12 }}
+          />
+        )}
+
         {selectedAnnotation.severity === 'severe' && !selectedAnnotation.suggestion.trim() && (
           <div style={{
             padding: '8px 12px',
@@ -450,6 +522,28 @@ function DetailContent({ selectedAnnotation, form, handleValuesChange, handleTog
           ]}
         >
           <TextArea rows={3} placeholder="请输入处理建议" maxLength={200} showCount />
+        </Form.Item>
+
+        <Divider style={{ margin: '12px 0' }} />
+
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#262626' }}>
+          <EditOutlined style={{ marginRight: 4 }} />
+          人工修订记录
+        </div>
+
+        <Form.Item label="修订原因" name="modificationReason">
+          <Select
+            placeholder="请选择修订原因"
+            allowClear
+            options={Object.entries(MODIFICATION_REASON_LABELS).map(([value, label]) => ({
+              value: value as ModificationReason,
+              label,
+            }))}
+          />
+        </Form.Item>
+
+        <Form.Item label="修订备注" name="modificationNote">
+          <TextArea rows={2} placeholder="请输入修订备注说明" maxLength={200} showCount />
         </Form.Item>
 
         <Divider style={{ margin: '12px 0' }} />

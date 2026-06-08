@@ -1,4 +1,13 @@
-import type { Plate, Annotation, ReviewRecord, HistoryEntry, User, FilterOptions } from '../types';
+import type {
+  Plate,
+  Annotation,
+  ReviewRecord,
+  HistoryEntry,
+  User,
+  FilterOptions,
+  DetectionResult,
+  ModificationRecord,
+} from '../types';
 import { MOCK_USERS } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -11,6 +20,9 @@ const MOCK_PLATES: Plate[] = [
     name: '猎户座天区底片',
     scanDate: '2024-03-15',
     imageUrl: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1200&q=80',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=200&q=80',
+    width: 1200,
+    height: 900,
     status: 'active',
     description: '1978年拍摄的猎户座天区玻璃底片',
     createdAt: '2024-03-15T10:00:00Z',
@@ -22,6 +34,9 @@ const MOCK_PLATES: Plate[] = [
     name: '仙女座大星云底片',
     scanDate: '2024-02-20',
     imageUrl: 'https://images.unsplash.com/photo-1506443432602-ac2fcd6f54e0?w=1200&q=80',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1506443432602-ac2fcd6f54e0?w=200&q=80',
+    width: 1200,
+    height: 900,
     status: 'active',
     description: '1985年拍摄的仙女座大星云底片',
     createdAt: '2024-02-20T10:00:00Z',
@@ -33,6 +48,9 @@ const MOCK_PLATES: Plate[] = [
     name: '银河中心区域底片',
     scanDate: '2024-01-10',
     imageUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1200&q=80',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=80',
+    width: 1200,
+    height: 900,
     status: 'archived',
     description: '1990年拍摄的银河系中心区域底片',
     createdAt: '2024-01-10T10:00:00Z',
@@ -60,6 +78,12 @@ const MOCK_ANNOTATIONS: Annotation[] = [
     updatedAt: '2024-03-16T14:00:00Z',
     lastModifiedBy: 'user-2',
     lastModifiedByName: '李复核',
+    confidence: 0.92,
+    isAutoDetected: true,
+    autoDetectType: 'scratch',
+    autoConfidence: 0.85,
+    modificationReason: 'incorrect_boundary',
+    modificationNote: '调整了划痕边界框，使其更准确',
   },
   {
     id: 'ann-2',
@@ -73,12 +97,16 @@ const MOCK_ANNOTATIONS: Annotation[] = [
     description: '中央区域有大片霉斑，影响星体观测',
     suggestion: '需要专业清洗和防霉处理，严重区域可能需要数字化修复',
     reviewStatus: 'pending',
-    createdBy: 'user-1',
-    createdByName: '张标注',
+    createdBy: 'ai-system',
+    createdByName: 'AI自动检测',
     createdAt: '2024-03-16T10:15:00Z',
     updatedAt: '2024-03-16T10:15:00Z',
-    lastModifiedBy: 'user-1',
-    lastModifiedByName: '张标注',
+    lastModifiedBy: 'ai-system',
+    lastModifiedByName: 'AI自动检测',
+    confidence: 0.78,
+    isAutoDetected: true,
+    autoDetectType: 'mold',
+    autoConfidence: 0.78,
   },
   {
     id: 'ann-3',
@@ -101,6 +129,12 @@ const MOCK_ANNOTATIONS: Annotation[] = [
     updatedAt: '2024-03-17T11:30:00Z',
     lastModifiedBy: 'user-2',
     lastModifiedByName: '李复核',
+    confidence: 0.45,
+    isAutoDetected: true,
+    autoDetectType: 'bright_spot',
+    autoConfidence: 0.62,
+    modificationReason: 'false_positive',
+    modificationNote: '复核确认是真实星体，非亮点污染',
   },
   {
     id: 'ann-4',
@@ -121,6 +155,79 @@ const MOCK_ANNOTATIONS: Annotation[] = [
     updatedAt: '2024-02-26T09:00:00Z',
     lastModifiedBy: 'user-2',
     lastModifiedByName: '李复核',
+    confidence: 1.0,
+    isAutoDetected: false,
+  },
+  {
+    id: 'ann-5',
+    plateId: 'plate-1',
+    shape: 'rectangle',
+    x: 450,
+    y: 300,
+    width: 60,
+    height: 40,
+    defectType: 'scratch',
+    severity: 'mild',
+    description: '底部细小划痕',
+    suggestion: '',
+    reviewStatus: 'pending',
+    createdBy: 'ai-system',
+    createdByName: 'AI自动检测',
+    createdAt: '2024-03-16T10:20:00Z',
+    updatedAt: '2024-03-16T10:20:00Z',
+    lastModifiedBy: 'ai-system',
+    lastModifiedByName: 'AI自动检测',
+    confidence: 0.95,
+    isAutoDetected: true,
+    autoDetectType: 'scratch',
+    autoConfidence: 0.95,
+  },
+  {
+    id: 'ann-6',
+    plateId: 'plate-1',
+    shape: 'circle',
+    x: 200,
+    y: 350,
+    radius: 15,
+    defectType: 'mold',
+    severity: 'moderate',
+    description: '左下角小面积霉斑',
+    suggestion: '',
+    reviewStatus: 'pending',
+    createdBy: 'ai-system',
+    createdByName: 'AI自动检测',
+    createdAt: '2024-03-16T10:22:00Z',
+    updatedAt: '2024-03-16T10:22:00Z',
+    lastModifiedBy: 'ai-system',
+    lastModifiedByName: 'AI自动检测',
+    confidence: 0.68,
+    isAutoDetected: true,
+    autoDetectType: 'mold',
+    autoConfidence: 0.68,
+  },
+  {
+    id: 'ann-7',
+    plateId: 'plate-2',
+    shape: 'rectangle',
+    x: 400,
+    y: 250,
+    width: 120,
+    height: 30,
+    defectType: 'scan_defect',
+    severity: 'severe',
+    description: '大片扫描条纹区域',
+    suggestion: '需要进行频域滤波处理',
+    reviewStatus: 'pending',
+    createdBy: 'ai-system',
+    createdByName: 'AI自动检测',
+    createdAt: '2024-02-25T14:25:00Z',
+    updatedAt: '2024-02-25T14:25:00Z',
+    lastModifiedBy: 'ai-system',
+    lastModifiedByName: 'AI自动检测',
+    confidence: 0.88,
+    isAutoDetected: true,
+    autoDetectType: 'scan_defect',
+    autoConfidence: 0.88,
   },
 ];
 
@@ -217,11 +324,54 @@ const MOCK_HISTORY: HistoryEntry[] = [
   },
 ];
 
+const MOCK_DETECTION_RESULTS: DetectionResult[] = [
+  {
+    plateId: 'plate-1',
+    status: 'completed',
+    progress: 100,
+    totalDetected: 5,
+    startedAt: '2024-03-16T09:00:00Z',
+    completedAt: '2024-03-16T09:02:30Z',
+  },
+  {
+    plateId: 'plate-2',
+    status: 'completed',
+    progress: 100,
+    totalDetected: 2,
+    startedAt: '2024-02-25T14:00:00Z',
+    completedAt: '2024-02-25T14:01:45Z',
+  },
+];
+
+const MOCK_MODIFICATION_RECORDS: ModificationRecord[] = [
+  {
+    id: 'mod-1',
+    annotationId: 'ann-1',
+    reason: 'incorrect_boundary',
+    description: '调整了划痕边界框，使其更准确地覆盖缺陷区域',
+    modifiedBy: 'user-1',
+    modifiedByName: '张标注',
+    modifiedAt: '2024-03-16T10:00:00Z',
+  },
+  {
+    id: 'mod-2',
+    annotationId: 'ann-3',
+    reason: 'false_positive',
+    description: '复核确认是真实星体，非亮点污染，标记为误检',
+    modifiedBy: 'user-2',
+    modifiedByName: '李复核',
+    modifiedAt: '2024-03-17T11:30:00Z',
+  },
+];
+
 const DEFAULT_FILTERS: FilterOptions = {
   defectTypes: [],
   severities: [],
   reviewStatuses: [],
   keyword: '',
+  confidenceMin: undefined,
+  confidenceMax: undefined,
+  isAutoDetected: null,
 };
 
 export const initialState: State = {
@@ -230,11 +380,15 @@ export const initialState: State = {
   annotations: MOCK_ANNOTATIONS,
   reviewRecords: MOCK_REVIEW_RECORDS,
   history: MOCK_HISTORY,
+  detectionResults: MOCK_DETECTION_RESULTS,
+  modificationRecords: MOCK_MODIFICATION_RECORDS,
   selectedPlateId: MOCK_PLATES[0]?.id || null,
   selectedAnnotationId: null,
+  selectedAnnotationIds: [],
   filters: DEFAULT_FILTERS,
   historyUndoStack: [],
   historyRedoStack: [],
+  confidenceThreshold: 0.5,
 };
 
 export interface State {
@@ -243,9 +397,13 @@ export interface State {
   annotations: Annotation[];
   reviewRecords: ReviewRecord[];
   history: HistoryEntry[];
+  detectionResults: DetectionResult[];
+  modificationRecords: ModificationRecord[];
   selectedPlateId: string | null;
   selectedAnnotationId: string | null;
+  selectedAnnotationIds: string[];
   filters: FilterOptions;
   historyUndoStack: HistoryEntry[][];
   historyRedoStack: HistoryEntry[][];
+  confidenceThreshold: number;
 }

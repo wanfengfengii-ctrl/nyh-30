@@ -10,6 +10,19 @@ export type PlateStatus = 'active' | 'archived';
 
 export type UserRole = 'annotator' | 'reviewer' | 'admin';
 
+export type DetectionStatus = 'idle' | 'running' | 'completed' | 'failed';
+
+export type ModificationReason =
+  | 'false_positive'
+  | 'false_negative'
+  | 'incorrect_type'
+  | 'incorrect_boundary'
+  | 'merged'
+  | 'split'
+  | 'other';
+
+export type ToolType = 'select' | 'rectangle' | 'circle' | 'polygon' | 'merge' | 'split';
+
 export interface Point {
   x: number;
   y: number;
@@ -50,6 +63,49 @@ export interface FilterOptions {
   severities: Severity[];
   reviewStatuses: ReviewStatus[];
   keyword: string;
+  confidenceMin?: number;
+  confidenceMax?: number;
+  isAutoDetected?: boolean | null;
+}
+
+export interface ModificationRecord {
+  id: string;
+  annotationId: string;
+  reason: ModificationReason;
+  description: string;
+  modifiedBy: string;
+  modifiedByName: string;
+  modifiedAt: string;
+  beforeData?: Partial<Annotation>;
+  afterData?: Partial<Annotation>;
+}
+
+export interface DetectionResult {
+  plateId: string;
+  status: DetectionStatus;
+  progress: number;
+  totalDetected: number;
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+}
+
+export interface DetectionStatistics {
+  totalCount: number;
+  autoDetectedCount: number;
+  manualAddedCount: number;
+  manualCorrectedCount: number;
+  falsePositiveCount: number;
+  falseNegativeCount: number;
+  avgConfidence: number;
+  highConfidenceCount: number;
+  mediumConfidenceCount: number;
+  lowConfidenceCount: number;
+  reviewedCount: number;
+  pendingReviewCount: number;
+  passCount: number;
+  rejectCount: number;
+  defectTypeStats: Record<DefectType, number>;
 }
 
 export interface BaseAnnotation {
@@ -67,6 +123,12 @@ export interface BaseAnnotation {
   updatedAt: string;
   lastModifiedBy: string;
   lastModifiedByName: string;
+  confidence: number;
+  isAutoDetected: boolean;
+  autoDetectType?: DefectType;
+  autoConfidence?: number;
+  modificationReason?: ModificationReason;
+  modificationNote?: string;
 }
 
 export interface RectangleAnnotation extends BaseAnnotation {
@@ -97,13 +159,14 @@ export interface Plate {
   name: string;
   scanDate: string;
   imageUrl: string;
+  thumbnailUrl: string;
+  width: number;
+  height: number;
   status: PlateStatus;
   description: string;
   createdAt: string;
   updatedAt: string;
 }
-
-export type ToolType = 'select' | 'rectangle' | 'circle' | 'polygon';
 
 export const DEFECT_TYPE_LABELS: Record<DefectType, string> = {
   scratch: '划痕',
@@ -152,6 +215,23 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   annotator: '标注员',
   reviewer: '复核员',
   admin: '管理员',
+};
+
+export const MODIFICATION_REASON_LABELS: Record<ModificationReason, string> = {
+  false_positive: '误检（假阳性）',
+  false_negative: '漏检（假阴性）',
+  incorrect_type: '类型错误',
+  incorrect_boundary: '边界不准确',
+  merged: '合并标注',
+  split: '拆分标注',
+  other: '其他原因',
+};
+
+export const DETECTION_STATUS_LABELS: Record<DetectionStatus, string> = {
+  idle: '空闲',
+  running: '检测中',
+  completed: '已完成',
+  failed: '检测失败',
 };
 
 export const MOCK_USERS: User[] = [

@@ -13,6 +13,10 @@ import type {
   ReviewStatus,
   DefectType,
   Severity,
+  DetectionResult,
+  ModificationRecord,
+  ModificationReason,
+  DetectionStatistics,
 } from '../types';
 import { MOCK_USERS } from '../types';
 import { initialState, State } from './mockData';
@@ -22,18 +26,28 @@ type Action =
   | { type: 'SET_CURRENT_USER'; payload: User }
   | { type: 'SELECT_PLATE'; payload: string | null }
   | { type: 'SELECT_ANNOTATION'; payload: string | null }
+  | { type: 'SELECT_MULTIPLE_ANNOTATIONS'; payload: string[] }
   | { type: 'ADD_PLATE'; payload: Omit<Plate, 'id' | 'createdAt' | 'updatedAt' | 'status'> }
   | { type: 'UPDATE_PLATE'; payload: { id: string; data: Partial<Plate> } }
   | { type: 'DELETE_PLATE'; payload: string }
-  | { type: 'ADD_RECT_ANNOTATION'; payload: Omit<RectangleAnnotation, 'id' | 'createdAt' | 'updatedAt' | 'reviewStatus' | 'createdBy' | 'createdByName' | 'lastModifiedBy' | 'lastModifiedByName'> }
-  | { type: 'ADD_CIRCLE_ANNOTATION'; payload: Omit<CircleAnnotation, 'id' | 'createdAt' | 'updatedAt' | 'reviewStatus' | 'createdBy' | 'createdByName' | 'lastModifiedBy' | 'lastModifiedByName'> }
-  | { type: 'ADD_POLYGON_ANNOTATION'; payload: Omit<PolygonAnnotation, 'id' | 'createdAt' | 'updatedAt' | 'reviewStatus' | 'createdBy' | 'createdByName' | 'lastModifiedBy' | 'lastModifiedByName'> }
-  | { type: 'UPDATE_ANNOTATION'; payload: { id: string; data: Partial<Annotation>; description?: string } }
+  | { type: 'ADD_RECT_ANNOTATION'; payload: Omit<RectangleAnnotation, 'id' | 'createdAt' | 'updatedAt' | 'reviewStatus' | 'createdBy' | 'createdByName' | 'lastModifiedBy' | 'lastModifiedByName' | 'confidence' | 'isAutoDetected'> & { confidence?: number; isAutoDetected?: boolean } }
+  | { type: 'ADD_CIRCLE_ANNOTATION'; payload: Omit<CircleAnnotation, 'id' | 'createdAt' | 'updatedAt' | 'reviewStatus' | 'createdBy' | 'createdByName' | 'lastModifiedBy' | 'lastModifiedByName' | 'confidence' | 'isAutoDetected'> & { confidence?: number; isAutoDetected?: boolean } }
+  | { type: 'ADD_POLYGON_ANNOTATION'; payload: Omit<PolygonAnnotation, 'id' | 'createdAt' | 'updatedAt' | 'reviewStatus' | 'createdBy' | 'createdByName' | 'lastModifiedBy' | 'lastModifiedByName' | 'confidence' | 'isAutoDetected'> & { confidence?: number; isAutoDetected?: boolean } }
+  | { type: 'BATCH_ADD_ANNOTATIONS'; payload: Annotation[] }
+  | { type: 'UPDATE_ANNOTATION'; payload: { id: string; data: Partial<Annotation>; description?: string; modificationReason?: ModificationReason; modificationNote?: string } }
   | { type: 'DELETE_ANNOTATION'; payload: string }
+  | { type: 'BATCH_DELETE_ANNOTATIONS'; payload: string[] }
   | { type: 'MOVE_ANNOTATION'; payload: { id: string; x: number; y: number } }
   | { type: 'RESIZE_RECT_ANNOTATION'; payload: { id: string; x?: number; y?: number; width?: number; height?: number } }
   | { type: 'RESIZE_CIRCLE_ANNOTATION'; payload: { id: string; x?: number; y?: number; radius?: number } }
+  | { type: 'MERGE_ANNOTATIONS'; payload: { annotationIds: string[]; mergedData: Partial<Annotation> } }
+  | { type: 'SPLIT_ANNOTATION'; payload: { annotationId: string; newAnnotations: Partial<Annotation>[] } }
   | { type: 'ADD_REVIEW'; payload: { annotationId: string; status: ReviewStatus; comment: string } }
+  | { type: 'BATCH_REVIEW'; payload: { annotationIds: string[]; status: ReviewStatus; comment: string } }
+  | { type: 'SET_DETECTION_RESULT'; payload: DetectionResult }
+  | { type: 'UPDATE_DETECTION_PROGRESS'; payload: { plateId: string; progress: number } }
+  | { type: 'ADD_MODIFICATION_RECORD'; payload: Omit<ModificationRecord, 'id' | 'modifiedAt'> }
+  | { type: 'SET_CONFIDENCE_THRESHOLD'; payload: number }
   | { type: 'SET_FILTERS'; payload: Partial<FilterOptions> }
   | { type: 'RESET_FILTERS' }
   | { type: 'UNDO' }
@@ -69,12 +83,6 @@ function reducer(state: State, action: Action): State {
     case 'SET_CURRENT_USER':
       return { ...state, currentUser: action.payload };
 
-    case 'SELECT_PLATE':
-      return { ...state, selectedPlateId: action.payload, selectedAnnotationId: null };
-
-    case 'SELECT_ANNOTATION':
-      return { ...state, selectedAnnotationId: action.payload };
-
     case 'ADD_PLATE': {
       const newPlate: Plate = {
         ...action.payload,
@@ -108,6 +116,15 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case 'SELECT_PLATE':
+      return { ...state, selectedPlateId: action.payload, selectedAnnotationId: null, selectedAnnotationIds: [] };
+
+    case 'SELECT_ANNOTATION':
+      return { ...state, selectedAnnotationId: action.payload, selectedAnnotationIds: action.payload ? [action.payload] : [] };
+
+    case 'SELECT_MULTIPLE_ANNOTATIONS':
+      return { ...state, selectedAnnotationIds: action.payload, selectedAnnotationId: action.payload.length === 1 ? action.payload[0] : null };
+
     case 'ADD_RECT_ANNOTATION': {
       const newAnnotation: RectangleAnnotation = {
         ...action.payload,
@@ -119,6 +136,8 @@ function reducer(state: State, action: Action): State {
         lastModifiedByName: state.currentUser.name,
         createdAt: now,
         updatedAt: now,
+        confidence: action.payload.confidence ?? 1.0,
+        isAutoDetected: action.payload.isAutoDetected ?? false,
       };
       const historyEntry = addHistoryEntry(
         state,
@@ -149,6 +168,8 @@ function reducer(state: State, action: Action): State {
         lastModifiedByName: state.currentUser.name,
         createdAt: now,
         updatedAt: now,
+        confidence: action.payload.confidence ?? 1.0,
+        isAutoDetected: action.payload.isAutoDetected ?? false,
       };
       const historyEntry = addHistoryEntry(
         state,
@@ -179,6 +200,8 @@ function reducer(state: State, action: Action): State {
         lastModifiedByName: state.currentUser.name,
         createdAt: now,
         updatedAt: now,
+        confidence: action.payload.confidence ?? 1.0,
+        isAutoDetected: action.payload.isAutoDetected ?? false,
       };
       const historyEntry = addHistoryEntry(
         state,
@@ -247,6 +270,209 @@ function reducer(state: State, action: Action): State {
         historyUndoStack: [...state.historyUndoStack, [historyEntry]],
         historyRedoStack: [],
         selectedAnnotationId: state.selectedAnnotationId === action.payload ? null : state.selectedAnnotationId,
+        selectedAnnotationIds: state.selectedAnnotationIds.filter((id) => id !== action.payload),
+      };
+    }
+
+    case 'BATCH_DELETE_ANNOTATIONS': {
+      const { payload: annotationIds } = action;
+      const oldAnnotations = state.annotations.filter((a) => annotationIds.includes(a.id));
+      if (oldAnnotations.length === 0) return state;
+
+      const historyEntries = oldAnnotations.map((ann) =>
+        addHistoryEntry(state, ann.id, 'delete', '批量删除标注', ann)
+      );
+
+      return {
+        ...state,
+        annotations: state.annotations.filter((a) => !annotationIds.includes(a.id)),
+        history: [...state.history, ...historyEntries],
+        historyUndoStack: [...state.historyUndoStack, historyEntries],
+        historyRedoStack: [],
+        selectedAnnotationId: null,
+        selectedAnnotationIds: [],
+      };
+    }
+
+    case 'BATCH_ADD_ANNOTATIONS': {
+      const { payload: newAnnotations } = action;
+      const historyEntries = newAnnotations.map((ann) =>
+        addHistoryEntry(state, ann.id, 'create', '批量添加自动检测标注', undefined, ann as Partial<Annotation>)
+      );
+
+      return {
+        ...state,
+        annotations: [...state.annotations, ...newAnnotations],
+        history: [...state.history, ...historyEntries],
+        historyUndoStack: [...state.historyUndoStack, historyEntries],
+        historyRedoStack: [],
+      };
+    }
+
+    case 'MERGE_ANNOTATIONS': {
+      const { annotationIds, mergedData } = action.payload;
+      const annotationsToMerge = state.annotations.filter((a) => annotationIds.includes(a.id));
+      if (annotationsToMerge.length < 2) return state;
+
+      const plateId = annotationsToMerge[0].plateId;
+      const defectType = (mergedData.defectType as DefectType) || annotationsToMerge[0].defectType;
+      const severity = (mergedData.severity as Severity) || annotationsToMerge[0].severity;
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let allPoints: Point[] = [];
+
+      annotationsToMerge.forEach((ann) => {
+        if (ann.shape === 'rectangle') {
+          minX = Math.min(minX, ann.x);
+          minY = Math.min(minY, ann.y);
+          maxX = Math.max(maxX, ann.x + ann.width);
+          maxY = Math.max(maxY, ann.y + ann.height);
+        } else if (ann.shape === 'circle') {
+          minX = Math.min(minX, ann.x - ann.radius);
+          minY = Math.min(minY, ann.y - ann.radius);
+          maxX = Math.max(maxX, ann.x + ann.radius);
+          maxY = Math.max(maxY, ann.y + ann.radius);
+        } else if (ann.shape === 'polygon') {
+          ann.points.forEach((p) => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          });
+          allPoints = [...allPoints, ...ann.points];
+        }
+      });
+
+      const mergedAnnotation: RectangleAnnotation = {
+        id: uuidv4(),
+        plateId,
+        shape: 'rectangle',
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        defectType,
+        severity,
+        description: mergedData.description || '合并标注',
+        suggestion: mergedData.suggestion || '',
+        reviewStatus: 'pending',
+        createdBy: state.currentUser.id,
+        createdByName: state.currentUser.name,
+        lastModifiedBy: state.currentUser.id,
+        lastModifiedByName: state.currentUser.name,
+        createdAt: now,
+        updatedAt: now,
+        confidence: 1.0,
+        isAutoDetected: false,
+        modificationReason: 'merged',
+        modificationNote: `合并了 ${annotationIds.length} 个标注`,
+      };
+
+      const deleteHistoryEntries = annotationsToMerge.map((ann) =>
+        addHistoryEntry(state, ann.id, 'delete', '合并标注-删除原标注', ann)
+      );
+      const createHistoryEntry = addHistoryEntry(
+        state,
+        mergedAnnotation.id,
+        'create',
+        `合并 ${annotationIds.length} 个标注`,
+        undefined,
+        mergedAnnotation as Partial<Annotation>
+      );
+
+      const modificationRecord: ModificationRecord = {
+        id: uuidv4(),
+        annotationId: mergedAnnotation.id,
+        reason: 'merged',
+        description: `合并了 ${annotationIds.length} 个标注`,
+        modifiedBy: state.currentUser.id,
+        modifiedByName: state.currentUser.name,
+        modifiedAt: now,
+      };
+
+      return {
+        ...state,
+        annotations: [
+          ...state.annotations.filter((a) => !annotationIds.includes(a.id)),
+          mergedAnnotation as Annotation,
+        ],
+        history: [...state.history, ...deleteHistoryEntries, createHistoryEntry],
+        historyUndoStack: [...state.historyUndoStack, [...deleteHistoryEntries, createHistoryEntry]],
+        historyRedoStack: [],
+        modificationRecords: [...state.modificationRecords, modificationRecord],
+        selectedAnnotationId: mergedAnnotation.id,
+        selectedAnnotationIds: [mergedAnnotation.id],
+      };
+    }
+
+    case 'SPLIT_ANNOTATION': {
+      const { annotationId, newAnnotations } = action.payload;
+      const originalAnnotation = state.annotations.find((a) => a.id === annotationId);
+      if (!originalAnnotation) return state;
+
+      const createdAnnotations: Annotation[] = newAnnotations.map((data, index) => {
+        const baseAnn = {
+          id: uuidv4(),
+          plateId: originalAnnotation.plateId,
+          defectType: (data.defectType as DefectType) || originalAnnotation.defectType,
+          severity: (data.severity as Severity) || originalAnnotation.severity,
+          description: data.description || `拆分标注 ${index + 1}`,
+          suggestion: data.suggestion || '',
+          reviewStatus: 'pending' as ReviewStatus,
+          createdBy: state.currentUser.id,
+          createdByName: state.currentUser.name,
+          lastModifiedBy: state.currentUser.id,
+          lastModifiedByName: state.currentUser.name,
+          createdAt: now,
+          updatedAt: now,
+          confidence: 1.0,
+          isAutoDetected: false,
+          modificationReason: 'split' as ModificationReason,
+          modificationNote: `从标注 ${annotationId} 拆分`,
+        };
+
+        if (data.shape === 'rectangle') {
+          return { ...baseAnn, shape: 'rectangle', x: data.x || 0, y: data.y || 0, width: data.width || 50, height: data.height || 50 } as RectangleAnnotation;
+        } else if (data.shape === 'circle') {
+          return { ...baseAnn, shape: 'circle', x: data.x || 0, y: data.y || 0, radius: data.radius || 25 } as CircleAnnotation;
+        } else {
+          return { ...baseAnn, shape: 'polygon', points: (data as any).points || [] } as PolygonAnnotation;
+        }
+      });
+
+      const deleteHistoryEntry = addHistoryEntry(
+        state,
+        annotationId,
+        'delete',
+        '拆分标注-删除原标注',
+        originalAnnotation
+      );
+      const createHistoryEntries = createdAnnotations.map((ann) =>
+        addHistoryEntry(state, ann.id, 'create', `拆分标注-新建`, undefined, ann as Partial<Annotation>)
+      );
+
+      const modificationRecord: ModificationRecord = {
+        id: uuidv4(),
+        annotationId: annotationId,
+        reason: 'split',
+        description: `拆分为 ${newAnnotations.length} 个标注`,
+        modifiedBy: state.currentUser.id,
+        modifiedByName: state.currentUser.name,
+        modifiedAt: now,
+      };
+
+      return {
+        ...state,
+        annotations: [
+          ...state.annotations.filter((a) => a.id !== annotationId),
+          ...createdAnnotations,
+        ],
+        history: [...state.history, deleteHistoryEntry, ...createHistoryEntries],
+        historyUndoStack: [...state.historyUndoStack, [deleteHistoryEntry, ...createHistoryEntries]],
+        historyRedoStack: [],
+        modificationRecords: [...state.modificationRecords, modificationRecord],
+        selectedAnnotationId: createdAnnotations[0]?.id || null,
+        selectedAnnotationIds: createdAnnotations.map((a) => a.id),
       };
     }
 
@@ -385,6 +611,90 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case 'BATCH_REVIEW': {
+      const { annotationIds, status, comment } = action.payload;
+      const targetAnnotations = state.annotations.filter((a) => annotationIds.includes(a.id));
+      if (targetAnnotations.length === 0) return state;
+
+      const reviewRecords: ReviewRecord[] = targetAnnotations.map((ann) => ({
+        id: uuidv4(),
+        annotationId: ann.id,
+        reviewerId: state.currentUser.id,
+        reviewerName: state.currentUser.name,
+        status,
+        comment,
+        reviewedAt: now,
+      }));
+
+      const newAnnotations = state.annotations.map((a) => {
+        if (annotationIds.includes(a.id)) {
+          return {
+            ...a,
+            reviewStatus: status,
+            lastModifiedBy: state.currentUser.id,
+            lastModifiedByName: state.currentUser.name,
+            updatedAt: now,
+          } as Annotation;
+        }
+        return a;
+      });
+
+      const historyEntries = targetAnnotations.map((ann) => {
+        const statusLabel = status === 'reviewed' ? '批量复核通过' : status === 'rejected' ? '批量复核驳回' : '批量重置为待复核';
+        return addHistoryEntry(
+          state,
+          ann.id,
+          'review',
+          statusLabel,
+          { reviewStatus: ann.reviewStatus },
+          { reviewStatus: status }
+        );
+      });
+
+      return {
+        ...state,
+        reviewRecords: [...state.reviewRecords, ...reviewRecords],
+        annotations: newAnnotations,
+        history: [...state.history, ...historyEntries],
+        historyUndoStack: [...state.historyUndoStack, historyEntries],
+        historyRedoStack: [],
+      };
+    }
+
+    case 'SET_DETECTION_RESULT': {
+      const existingIndex = state.detectionResults.findIndex((d) => d.plateId === action.payload.plateId);
+      let newDetectionResults;
+      if (existingIndex >= 0) {
+        newDetectionResults = [...state.detectionResults];
+        newDetectionResults[existingIndex] = action.payload;
+      } else {
+        newDetectionResults = [...state.detectionResults, action.payload];
+      }
+      return { ...state, detectionResults: newDetectionResults };
+    }
+
+    case 'UPDATE_DETECTION_PROGRESS': {
+      const { plateId, progress } = action.payload;
+      return {
+        ...state,
+        detectionResults: state.detectionResults.map((d) =>
+          d.plateId === plateId ? { ...d, progress } : d
+        ),
+      };
+    }
+
+    case 'ADD_MODIFICATION_RECORD': {
+      const newRecord: ModificationRecord = {
+        ...action.payload,
+        id: uuidv4(),
+        modifiedAt: now,
+      };
+      return { ...state, modificationRecords: [...state.modificationRecords, newRecord] };
+    }
+
+    case 'SET_CONFIDENCE_THRESHOLD':
+      return { ...state, confidenceThreshold: action.payload };
+
     case 'SET_FILTERS':
       return {
         ...state,
@@ -482,10 +792,14 @@ interface AppContextType {
   currentUser: User;
   selectedPlate: Plate | null;
   selectedAnnotation: Annotation | null;
+  selectedAnnotationIds: string[];
   plateAnnotations: Annotation[];
   filteredAnnotations: Annotation[];
   annotationReviews: ReviewRecord[];
   annotationHistory: HistoryEntry[];
+  annotationModifications: ModificationRecord[];
+  currentDetectionResult: DetectionResult | null;
+  confidenceThreshold: number;
   canUndo: boolean;
   canRedo: boolean;
   allUsers: User[];
@@ -493,14 +807,25 @@ interface AppContextType {
   setFilters: (filters: Partial<FilterOptions>) => void;
   resetFilters: () => void;
   addReview: (annotationId: string, status: ReviewStatus, comment: string) => void;
+  batchReview: (annotationIds: string[], status: ReviewStatus, comment: string) => void;
   undo: () => void;
   redo: () => void;
+  selectMultipleAnnotations: (ids: string[]) => void;
+  mergeAnnotations: (annotationIds: string[], mergedData: Partial<Annotation>) => void;
+  splitAnnotation: (annotationId: string, newAnnotations: Partial<Annotation>[]) => void;
+  batchDeleteAnnotations: (annotationIds: string[]) => void;
+  setDetectionResult: (result: DetectionResult) => void;
+  updateDetectionProgress: (plateId: string, progress: number) => void;
+  setConfidenceThreshold: (threshold: number) => void;
+  addModificationRecord: (record: Omit<ModificationRecord, 'id' | 'modifiedAt'>) => void;
   getPlateStatistics: (plateId: string) => {
     total: number;
     byType: Record<DefectType, number>;
     bySeverity: Record<Severity, number>;
     byReviewStatus: Record<ReviewStatus, number>;
   };
+  getDetectionStatistics: (plateId?: string) => DetectionStatistics;
+  batchAddAnnotations: (annotations: Annotation[]) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -512,14 +837,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectedAnnotation = state.annotations.find(
     (a) => a.id === state.selectedAnnotationId && a.plateId === state.selectedPlateId
   ) || null;
+  const selectedAnnotationIds = state.selectedAnnotationIds;
   const plateAnnotations = state.annotations.filter((a) => a.plateId === state.selectedPlateId);
+  const confidenceThreshold = state.confidenceThreshold;
+
+  const currentDetectionResult = useMemo(() => {
+    if (!state.selectedPlateId) return null;
+    return state.detectionResults.find((d) => d.plateId === state.selectedPlateId) || null;
+  }, [state.selectedPlateId, state.detectionResults]);
 
   const filteredAnnotations = useMemo(() => {
-    const { defectTypes, severities, reviewStatuses, keyword } = state.filters;
+    const { defectTypes, severities, reviewStatuses, keyword, confidenceMin, confidenceMax, isAutoDetected } = state.filters;
     return plateAnnotations.filter((ann) => {
       if (defectTypes.length > 0 && !defectTypes.includes(ann.defectType)) return false;
       if (severities.length > 0 && !severities.includes(ann.severity)) return false;
       if (reviewStatuses.length > 0 && !reviewStatuses.includes(ann.reviewStatus)) return false;
+      if (confidenceMin !== undefined && ann.confidence < confidenceMin) return false;
+      if (confidenceMax !== undefined && ann.confidence > confidenceMax) return false;
+      if (isAutoDetected !== null && isAutoDetected !== undefined && ann.isAutoDetected !== isAutoDetected) return false;
       if (keyword) {
         const kw = keyword.toLowerCase();
         return (
@@ -546,6 +881,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [selectedAnnotation, state.history]);
 
+  const annotationModifications = useMemo(() => {
+    if (!selectedAnnotation) return [];
+    return state.modificationRecords
+      .filter((m) => m.annotationId === selectedAnnotation.id)
+      .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
+  }, [selectedAnnotation, state.modificationRecords]);
+
   const canUndo = state.historyUndoStack.length > 0;
   const canRedo = state.historyRedoStack.length > 0;
 
@@ -565,12 +907,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'ADD_REVIEW', payload: { annotationId, status, comment } });
   };
 
+  const batchReview = (annotationIds: string[], status: ReviewStatus, comment: string) => {
+    dispatch({ type: 'BATCH_REVIEW', payload: { annotationIds, status, comment } });
+  };
+
   const undo = () => {
     dispatch({ type: 'UNDO' });
   };
 
   const redo = () => {
     dispatch({ type: 'REDO' });
+  };
+
+  const selectMultipleAnnotations = (ids: string[]) => {
+    dispatch({ type: 'SELECT_MULTIPLE_ANNOTATIONS', payload: ids });
+  };
+
+  const mergeAnnotations = (annotationIds: string[], mergedData: Partial<Annotation>) => {
+    dispatch({ type: 'MERGE_ANNOTATIONS', payload: { annotationIds, mergedData } });
+  };
+
+  const splitAnnotation = (annotationId: string, newAnnotations: Partial<Annotation>[]) => {
+    dispatch({ type: 'SPLIT_ANNOTATION', payload: { annotationId, newAnnotations } });
+  };
+
+  const batchDeleteAnnotations = (annotationIds: string[]) => {
+    dispatch({ type: 'BATCH_DELETE_ANNOTATIONS', payload: annotationIds });
+  };
+
+  const setDetectionResult = (result: DetectionResult) => {
+    dispatch({ type: 'SET_DETECTION_RESULT', payload: result });
+  };
+
+  const updateDetectionProgress = (plateId: string, progress: number) => {
+    dispatch({ type: 'UPDATE_DETECTION_PROGRESS', payload: { plateId, progress } });
+  };
+
+  const setConfidenceThreshold = (threshold: number) => {
+    dispatch({ type: 'SET_CONFIDENCE_THRESHOLD', payload: threshold });
+  };
+
+  const addModificationRecord = (record: Omit<ModificationRecord, 'id' | 'modifiedAt'>) => {
+    dispatch({ type: 'ADD_MODIFICATION_RECORD', payload: record });
+  };
+
+  const batchAddAnnotations = (annotations: Annotation[]) => {
+    dispatch({ type: 'BATCH_ADD_ANNOTATIONS', payload: annotations });
   };
 
   const getPlateStatistics = (plateId: string) => {
@@ -606,6 +988,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   };
 
+  const getDetectionStatistics = (plateId?: string): DetectionStatistics => {
+    const anns = plateId ? state.annotations.filter((a) => a.plateId === plateId) : state.annotations;
+
+    const totalCount = anns.length;
+    const autoDetectedCount = anns.filter((a) => a.isAutoDetected).length;
+    const manualAddedCount = anns.filter((a) => !a.isAutoDetected).length;
+    const manualCorrectedCount = anns.filter((a) => a.isAutoDetected && a.modificationReason).length;
+
+    const falsePositiveCount = anns.filter(
+      (a) => a.isAutoDetected && a.modificationReason === 'false_positive'
+    ).length;
+    const falseNegativeCount = anns.filter(
+      (a) => a.modificationReason === 'false_negative'
+    ).length;
+
+    const autoAnns = anns.filter((a) => a.isAutoDetected);
+    const avgConfidence = autoAnns.length > 0
+      ? autoAnns.reduce((sum, a) => sum + a.confidence, 0) / autoAnns.length
+      : 0;
+
+    const highConfidenceCount = anns.filter((a) => a.confidence >= 0.8).length;
+    const mediumConfidenceCount = anns.filter((a) => a.confidence >= 0.5 && a.confidence < 0.8).length;
+    const lowConfidenceCount = anns.filter((a) => a.confidence < 0.5).length;
+
+    const reviewedCount = anns.filter((a) => a.reviewStatus !== 'pending').length;
+    const pendingReviewCount = anns.filter((a) => a.reviewStatus === 'pending').length;
+    const passCount = anns.filter((a) => a.reviewStatus === 'reviewed').length;
+    const rejectCount = anns.filter((a) => a.reviewStatus === 'rejected').length;
+
+    const defectTypeStats = {
+      scratch: anns.filter((a) => a.defectType === 'scratch').length,
+      mold: anns.filter((a) => a.defectType === 'mold').length,
+      bright_spot: anns.filter((a) => a.defectType === 'bright_spot').length,
+      scan_defect: anns.filter((a) => a.defectType === 'scan_defect').length,
+    };
+
+    return {
+      totalCount,
+      autoDetectedCount,
+      manualAddedCount,
+      manualCorrectedCount,
+      falsePositiveCount,
+      falseNegativeCount,
+      avgConfidence,
+      highConfidenceCount,
+      mediumConfidenceCount,
+      lowConfidenceCount,
+      reviewedCount,
+      pendingReviewCount,
+      passCount,
+      rejectCount,
+      defectTypeStats,
+    };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -614,10 +1051,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         currentUser: state.currentUser,
         selectedPlate,
         selectedAnnotation,
+        selectedAnnotationIds,
         plateAnnotations,
         filteredAnnotations,
         annotationReviews,
         annotationHistory,
+        annotationModifications,
+        currentDetectionResult,
+        confidenceThreshold,
         canUndo,
         canRedo,
         allUsers: MOCK_USERS,
@@ -625,9 +1066,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setFilters,
         resetFilters,
         addReview,
+        batchReview,
         undo,
         redo,
+        selectMultipleAnnotations,
+        mergeAnnotations,
+        splitAnnotation,
+        batchDeleteAnnotations,
+        setDetectionResult,
+        updateDetectionProgress,
+        setConfidenceThreshold,
+        addModificationRecord,
         getPlateStatistics,
+        getDetectionStatistics,
+        batchAddAnnotations,
       }}
     >
       {children}

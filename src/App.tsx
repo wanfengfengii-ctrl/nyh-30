@@ -6,12 +6,18 @@ import {
   UserOutlined,
   UndoOutlined,
   RedoOutlined,
+  RobotOutlined,
+  ExperimentOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { AppProvider, useApp } from './store/AppContext';
 import PlateList from './components/PlateList';
 import AnnotationCanvas from './components/AnnotationCanvas';
 import AnnotationDetailPanel from './components/AnnotationDetailPanel';
 import StatisticsPanel from './components/StatisticsPanel';
+import AutoDetectionPanel from './components/AutoDetectionPanel';
+import DetectionStatisticsPanel from './components/DetectionStatisticsPanel';
+import BatchProcessingPanel from './components/BatchProcessingPanel';
 import type { DefectType, User } from './types';
 import { USER_ROLE_LABELS } from './types';
 
@@ -58,6 +64,34 @@ function App() {
       ),
     },
     {
+      key: 'detection',
+      label: (
+        <span>
+          <RobotOutlined />
+          AI检测
+        </span>
+      ),
+      children: (
+        <div style={{ height: 'calc(100vh - 100px)', overflow: 'hidden' }}>
+          <AutoDetectionPanel />
+        </div>
+      ),
+    },
+    {
+      key: 'batch',
+      label: (
+        <span>
+          <AppstoreOutlined />
+          批量处理
+        </span>
+      ),
+      children: (
+        <div style={{ height: 'calc(100vh - 100px)', overflow: 'hidden' }}>
+          <BatchProcessingPanel />
+        </div>
+      ),
+    },
+    {
       key: 'stats',
       label: (
         <span>
@@ -67,7 +101,7 @@ function App() {
       ),
       children: (
         <div style={{ height: 'calc(100vh - 100px)', overflow: 'hidden' }}>
-          <StatisticsPanel />
+          <DetectionStatisticsPanel />
         </div>
       ),
     },
@@ -91,10 +125,10 @@ function App() {
         <Space>
           <FileImageOutlined style={{ fontSize: 20 }} />
           <h2 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 500 }}>
-            天文底片标注系统
+            星图底片智能缺陷检测系统
           </h2>
           <span style={{ marginLeft: 12, color: '#8c8c8c', fontSize: 12 }}>
-            老星图底片缺陷标注与整理工具
+            AI自动检测 · 人工校正 · 复核追踪
           </span>
         </Space>
 

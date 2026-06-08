@@ -70,6 +70,9 @@ export default function PlateList() {
             name: values.name,
             scanDate: scanDateStr,
             imageUrl: values.imageUrl,
+            thumbnailUrl: values.imageUrl,
+            width: 1200,
+            height: 900,
             description: values.description,
           },
         });
