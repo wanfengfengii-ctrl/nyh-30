@@ -195,7 +195,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const selectedPlate = state.plates.find((p) => p.id === state.selectedPlateId) || null;
-  const selectedAnnotation = state.annotations.find((a) => a.id === state.selectedAnnotationId) || null;
+  const selectedAnnotation = state.annotations.find(
+    (a) => a.id === state.selectedAnnotationId && a.plateId === state.selectedPlateId
+  ) || null;
   const plateAnnotations = state.annotations.filter((a) => a.plateId === state.selectedPlateId);
 
   return (

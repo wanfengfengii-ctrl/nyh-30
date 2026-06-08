@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   List,
@@ -36,16 +36,25 @@ export default function AnnotationDetailPanel() {
   const { selectedPlate, selectedAnnotation, plateAnnotations, dispatch } = useApp();
   const [form] = Form.useForm();
 
+  useEffect(() => {
+    if (selectedAnnotation) {
+      form.setFieldsValue({
+        defectType: selectedAnnotation.defectType,
+        severity: selectedAnnotation.severity,
+        description: selectedAnnotation.description,
+        suggestion: selectedAnnotation.suggestion,
+      });
+    } else {
+      form.resetFields();
+    }
+  }, [selectedAnnotation, form]);
+
   const handleSelectAnnotation = (id: string) => {
     dispatch({ type: 'SELECT_ANNOTATION', payload: id });
   };
 
   const handleValuesChange = (_: any, allValues: any) => {
     if (!selectedAnnotation) return;
-
-    if (allValues.severity === 'severe' && !allValues.suggestion?.trim()) {
-      return;
-    }
 
     dispatch({
       type: 'UPDATE_ANNOTATION',

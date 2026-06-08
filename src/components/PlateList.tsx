@@ -177,22 +177,15 @@ export default function PlateList() {
               }}
               />
             </Tooltip>,
-            <Popconfirm
-            title="删除底片"
-            description="删除将同时删除所有标注，确定吗？"
-            onConfirm={(e) => {
-              e?.stopPropagation();
-              handleDelete(plate);
-            }}
-            onCancel={(e) => e?.stopPropagation()}
-            okText="删除"
-            okType="danger"
-            >
+            <Tooltip title="删除">
               <DeleteOutlined
               style={{ color: '#ff4d4f' }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(plate);
+              }}
               />
-            </Popconfirm>,
+            </Tooltip>,
           ]}
           >
             <List.Item.Meta
