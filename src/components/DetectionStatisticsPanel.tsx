@@ -29,11 +29,11 @@ import { DEFECT_TYPE_LABELS, DEFECT_TYPE_COLORS } from '../types';
 import { getConfidenceColor } from '../services/detectionService';
 
 export default function DetectionStatisticsPanel() {
-  const { plateAnnotations, getDetectionStatistics } = useApp();
+  const { plateAnnotations, getDetectionStatistics, selectedPlate } = useApp();
 
   const stats = useMemo<DetectionStatistics>(() => {
-    return getDetectionStatistics();
-  }, [plateAnnotations, getDetectionStatistics]);
+    return getDetectionStatistics(selectedPlate?.id);
+  }, [plateAnnotations, getDetectionStatistics, selectedPlate]);
 
   if (plateAnnotations.length === 0) {
     return (

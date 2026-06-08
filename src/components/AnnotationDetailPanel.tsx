@@ -63,6 +63,8 @@ export default function AnnotationDetailPanel() {
     canRedo,
     undo,
     redo,
+    addReview,
+    currentUser,
   } = useApp();
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('detail');
@@ -112,14 +114,8 @@ export default function AnnotationDetailPanel() {
     }
 
     const newStatus: ReviewStatus = selectedAnnotation.reviewStatus === 'pending' ? 'reviewed' : 'pending';
-    dispatch({
-      type: 'UPDATE_ANNOTATION',
-      payload: {
-        id: selectedAnnotation.id,
-        data: { reviewStatus: newStatus },
-        description: newStatus === 'reviewed' ? '标记为已复核' : '取消复核',
-      },
-    });
+    
+    addReview(selectedAnnotation.id, newStatus, newStatus === 'reviewed' ? '快速复核通过' : '取消复核');
     message.success(newStatus === 'reviewed' ? '已标记为已复核' : '已取消复核');
   };
 

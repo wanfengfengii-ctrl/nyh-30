@@ -364,7 +364,7 @@ const MOCK_MODIFICATION_RECORDS: ModificationRecord[] = [
   },
 ];
 
-const DEFAULT_FILTERS: FilterOptions = {
+export const DEFAULT_FILTERS: FilterOptions = {
   defectTypes: [],
   severities: [],
   reviewStatuses: [],

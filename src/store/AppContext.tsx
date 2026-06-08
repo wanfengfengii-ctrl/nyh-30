@@ -19,7 +19,7 @@ import type {
   DetectionStatistics,
 } from '../types';
 import { MOCK_USERS } from '../types';
-import { initialState, State } from './mockData';
+import { initialState, State, DEFAULT_FILTERS } from './mockData';
 import { v4 as uuidv4 } from 'uuid';
 
 type Action =
@@ -117,7 +117,13 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'SELECT_PLATE':
-      return { ...state, selectedPlateId: action.payload, selectedAnnotationId: null, selectedAnnotationIds: [] };
+      return { 
+        ...state, 
+        selectedPlateId: action.payload, 
+        selectedAnnotationId: null, 
+        selectedAnnotationIds: [],
+        filters: { ...DEFAULT_FILTERS },
+      };
 
     case 'SELECT_ANNOTATION':
       return { ...state, selectedAnnotationId: action.payload, selectedAnnotationIds: action.payload ? [action.payload] : [] };
