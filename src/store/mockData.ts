@@ -1,9 +1,12 @@
-import type { Plate, Annotation } from '../types';
+import type { Plate, Annotation, ReviewRecord, HistoryEntry, User, FilterOptions } from '../types';
+import { MOCK_USERS } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+
+const defaultUser = MOCK_USERS[0];
 
 const MOCK_PLATES: Plate[] = [
   {
-    id: uuidv4(),
+    id: 'plate-1',
     code: 'AP-001',
     name: '猎户座天区底片',
     scanDate: '2024-03-15',
@@ -14,7 +17,7 @@ const MOCK_PLATES: Plate[] = [
     updatedAt: '2024-03-15T10:00:00Z',
   },
   {
-    id: uuidv4(),
+    id: 'plate-2',
     code: 'AP-002',
     name: '仙女座大星云底片',
     scanDate: '2024-02-20',
@@ -25,7 +28,7 @@ const MOCK_PLATES: Plate[] = [
     updatedAt: '2024-02-20T10:00:00Z',
   },
   {
-    id: uuidv4(),
+    id: 'plate-3',
     code: 'AP-003',
     name: '银河中心区域底片',
     scanDate: '2024-01-10',
@@ -37,18 +40,212 @@ const MOCK_PLATES: Plate[] = [
   },
 ];
 
-const MOCK_ANNOTATIONS: Annotation[] = [];
+const MOCK_ANNOTATIONS: Annotation[] = [
+  {
+    id: 'ann-1',
+    plateId: 'plate-1',
+    shape: 'rectangle',
+    x: 100,
+    y: 150,
+    width: 80,
+    height: 60,
+    defectType: 'scratch',
+    severity: 'moderate',
+    description: '底片左上角有一条明显的划痕',
+    suggestion: '使用数字修复技术进行修复',
+    reviewStatus: 'reviewed',
+    createdBy: 'user-1',
+    createdByName: '张标注',
+    createdAt: '2024-03-16T09:30:00Z',
+    updatedAt: '2024-03-16T14:00:00Z',
+    lastModifiedBy: 'user-2',
+    lastModifiedByName: '李复核',
+  },
+  {
+    id: 'ann-2',
+    plateId: 'plate-1',
+    shape: 'circle',
+    x: 300,
+    y: 200,
+    radius: 25,
+    defectType: 'mold',
+    severity: 'severe',
+    description: '中央区域有大片霉斑，影响星体观测',
+    suggestion: '需要专业清洗和防霉处理，严重区域可能需要数字化修复',
+    reviewStatus: 'pending',
+    createdBy: 'user-1',
+    createdByName: '张标注',
+    createdAt: '2024-03-16T10:15:00Z',
+    updatedAt: '2024-03-16T10:15:00Z',
+    lastModifiedBy: 'user-1',
+    lastModifiedByName: '张标注',
+  },
+  {
+    id: 'ann-3',
+    plateId: 'plate-1',
+    shape: 'polygon',
+    points: [
+      { x: 500, y: 100 },
+      { x: 550, y: 120 },
+      { x: 540, y: 180 },
+      { x: 490, y: 170 },
+    ],
+    defectType: 'bright_spot',
+    severity: 'mild',
+    description: '扫描时产生的亮点污染',
+    suggestion: '',
+    reviewStatus: 'rejected',
+    createdBy: 'user-4',
+    createdByName: '赵标注',
+    createdAt: '2024-03-17T08:00:00Z',
+    updatedAt: '2024-03-17T11:30:00Z',
+    lastModifiedBy: 'user-2',
+    lastModifiedByName: '李复核',
+  },
+  {
+    id: 'ann-4',
+    plateId: 'plate-2',
+    shape: 'rectangle',
+    x: 150,
+    y: 180,
+    width: 100,
+    height: 50,
+    defectType: 'scan_defect',
+    severity: 'moderate',
+    description: '扫描过程中产生的横向条纹',
+    suggestion: '使用图像处理软件去除扫描条纹',
+    reviewStatus: 'reviewed',
+    createdBy: 'user-4',
+    createdByName: '赵标注',
+    createdAt: '2024-02-25T14:20:00Z',
+    updatedAt: '2024-02-26T09:00:00Z',
+    lastModifiedBy: 'user-2',
+    lastModifiedByName: '李复核',
+  },
+];
+
+const MOCK_REVIEW_RECORDS: ReviewRecord[] = [
+  {
+    id: 'review-1',
+    annotationId: 'ann-1',
+    reviewerId: 'user-2',
+    reviewerName: '李复核',
+    status: 'reviewed',
+    comment: '标注准确，建议合理，通过复核。',
+    reviewedAt: '2024-03-16T14:00:00Z',
+  },
+  {
+    id: 'review-2',
+    annotationId: 'ann-3',
+    reviewerId: 'user-2',
+    reviewerName: '李复核',
+    status: 'rejected',
+    comment: '该亮点为真实星体，非扫描污染，请重新确认。',
+    reviewedAt: '2024-03-17T11:30:00Z',
+  },
+  {
+    id: 'review-3',
+    annotationId: 'ann-4',
+    reviewerId: 'user-2',
+    reviewerName: '李复核',
+    status: 'reviewed',
+    comment: '扫描缺陷标注正确，处理建议可行。',
+    reviewedAt: '2024-02-26T09:00:00Z',
+  },
+];
+
+const MOCK_HISTORY: HistoryEntry[] = [
+  {
+    id: 'hist-1',
+    annotationId: 'ann-1',
+    action: 'create',
+    userId: 'user-1',
+    userName: '张标注',
+    timestamp: '2024-03-16T09:30:00Z',
+    description: '创建划痕标注',
+  },
+  {
+    id: 'hist-2',
+    annotationId: 'ann-1',
+    action: 'update',
+    userId: 'user-1',
+    userName: '张标注',
+    timestamp: '2024-03-16T10:00:00Z',
+    beforeData: { description: '' },
+    afterData: { description: '底片左上角有一条明显的划痕' },
+    description: '更新缺陷描述',
+  },
+  {
+    id: 'hist-3',
+    annotationId: 'ann-1',
+    action: 'review',
+    userId: 'user-2',
+    userName: '李复核',
+    timestamp: '2024-03-16T14:00:00Z',
+    beforeData: { reviewStatus: 'pending' },
+    afterData: { reviewStatus: 'reviewed' },
+    description: '复核通过',
+  },
+  {
+    id: 'hist-4',
+    annotationId: 'ann-2',
+    action: 'create',
+    userId: 'user-1',
+    userName: '张标注',
+    timestamp: '2024-03-16T10:15:00Z',
+    description: '创建霉斑标注',
+  },
+  {
+    id: 'hist-5',
+    annotationId: 'ann-3',
+    action: 'create',
+    userId: 'user-4',
+    userName: '赵标注',
+    timestamp: '2024-03-17T08:00:00Z',
+    description: '创建亮点污染标注',
+  },
+  {
+    id: 'hist-6',
+    annotationId: 'ann-3',
+    action: 'review',
+    userId: 'user-2',
+    userName: '李复核',
+    timestamp: '2024-03-17T11:30:00Z',
+    beforeData: { reviewStatus: 'pending' },
+    afterData: { reviewStatus: 'rejected' },
+    description: '复核驳回',
+  },
+];
+
+const DEFAULT_FILTERS: FilterOptions = {
+  defectTypes: [],
+  severities: [],
+  reviewStatuses: [],
+  keyword: '',
+};
 
 export const initialState: State = {
+  currentUser: defaultUser,
   plates: MOCK_PLATES,
   annotations: MOCK_ANNOTATIONS,
+  reviewRecords: MOCK_REVIEW_RECORDS,
+  history: MOCK_HISTORY,
   selectedPlateId: MOCK_PLATES[0]?.id || null,
   selectedAnnotationId: null,
+  filters: DEFAULT_FILTERS,
+  historyUndoStack: [],
+  historyRedoStack: [],
 };
 
 export interface State {
+  currentUser: User;
   plates: Plate[];
   annotations: Annotation[];
+  reviewRecords: ReviewRecord[];
+  history: HistoryEntry[];
   selectedPlateId: string | null;
   selectedAnnotationId: string | null;
+  filters: FilterOptions;
+  historyUndoStack: HistoryEntry[][];
+  historyRedoStack: HistoryEntry[][];
 }

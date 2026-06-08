@@ -1,18 +1,46 @@
 import { useState } from 'react';
-import { Layout, Tabs } from 'antd';
-import { FileImageOutlined, BarChartOutlined } from '@ant-design/icons';
-import { AppProvider } from './store/AppContext';
+import { Layout, Tabs, Avatar, Dropdown, Space, Tag } from 'antd';
+import {
+  FileImageOutlined,
+  BarChartOutlined,
+  UserOutlined,
+  UndoOutlined,
+  RedoOutlined,
+} from '@ant-design/icons';
+import { AppProvider, useApp } from './store/AppContext';
 import PlateList from './components/PlateList';
 import AnnotationCanvas from './components/AnnotationCanvas';
 import AnnotationDetailPanel from './components/AnnotationDetailPanel';
 import StatisticsPanel from './components/StatisticsPanel';
-import type { DefectType } from './types';
+import type { DefectType, User } from './types';
+import { USER_ROLE_LABELS } from './types';
 
 const { Header, Sider, Content } = Layout;
 
 function App() {
   const [activeTab, setActiveTab] = useState('detail');
   const [defaultDefectType, setDefaultDefectType] = useState<DefectType>('scratch');
+  const { currentUser, allUsers, setCurrentUser, canUndo, canRedo, undo, redo } = useApp();
+
+  const handleUserChange = (user: User) => {
+    setCurrentUser(user);
+  };
+
+  const userMenuItems = allUsers.map((user) => ({
+    key: user.id,
+    label: (
+      <Space size="small">
+        <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }}>
+          {user.name.charAt(0)}
+        </Avatar>
+        <span>{user.name}</span>
+        <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>
+          {USER_ROLE_LABELS[user.role]}
+        </Tag>
+      </Space>
+    ),
+    onClick: () => handleUserChange(user),
+  }));
 
   const tabItems = [
     {
@@ -53,19 +81,71 @@ function App() {
           color: '#fff',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           padding: '0 24px',
           height: 56,
           lineHeight: '56px',
           flexShrink: 0,
         }}
       >
-        <FileImageOutlined style={{ fontSize: 20, marginRight: 12 }} />
-        <h2 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 500 }}>
-          天文底片标注系统
-        </h2>
-        <span style={{ marginLeft: 12, color: '#8c8c8c', fontSize: 12 }}>
-          老星图底片缺陷标注与整理工具
-        </span>
+        <Space>
+          <FileImageOutlined style={{ fontSize: 20 }} />
+          <h2 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 500 }}>
+            天文底片标注系统
+          </h2>
+          <span style={{ marginLeft: 12, color: '#8c8c8c', fontSize: 12 }}>
+            老星图底片缺陷标注与整理工具
+          </span>
+        </Space>
+
+        <Space size="middle">
+          <Space size="small">
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: canUndo ? '#fff' : '#8c8c8c',
+                cursor: canUndo ? 'pointer' : 'not-allowed',
+                fontSize: 16,
+                padding: '4px 8px',
+                borderRadius: 4,
+              }}
+              title="撤销 (Ctrl+Z)"
+            >
+              <UndoOutlined />
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: canRedo ? '#fff' : '#8c8c8c',
+                cursor: canRedo ? 'pointer' : 'not-allowed',
+                fontSize: 16,
+                padding: '4px 8px',
+                borderRadius: 4,
+              }}
+              title="恢复 (Ctrl+Y)"
+            >
+              <RedoOutlined />
+            </button>
+          </Space>
+
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Space style={{ cursor: 'pointer', color: '#fff' }}>
+              <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }}>
+                {currentUser.name.charAt(0)}
+              </Avatar>
+              <span style={{ fontSize: 14 }}>{currentUser.name}</span>
+              <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>
+                {USER_ROLE_LABELS[currentUser.role]}
+              </Tag>
+            </Space>
+          </Dropdown>
+        </Space>
       </Header>
 
       <Layout style={{ height: 'calc(100vh - 56px)', minHeight: 0 }}>
@@ -95,7 +175,7 @@ function App() {
         </Content>
 
         <Sider
-          width={320}
+          width={340}
           theme="light"
           style={{ borderLeft: '1px solid #f0f0f0', flexShrink: 0 }}
         >

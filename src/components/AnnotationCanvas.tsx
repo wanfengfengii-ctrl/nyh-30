@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Image as KonvaImage, Rect, Circle, Line, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import useImage from 'use-image';
-import { Button, Space, Tooltip, Select } from 'antd';
+import { Button, Space, Tooltip, Select, Divider } from 'antd';
 import {
   SelectOutlined,
   BgColorsOutlined,
@@ -11,6 +11,8 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
   ReloadOutlined,
+  UndoOutlined,
+  RedoOutlined,
 } from '@ant-design/icons';
 import { useApp } from '../store/AppContext';
 import type { ToolType, Annotation, DefectType, Point } from '../types';
@@ -22,7 +24,7 @@ interface AnnotationCanvasProps {
 }
 
 export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange }: AnnotationCanvasProps) {
-  const { selectedPlate, selectedAnnotation, plateAnnotations, dispatch } = useApp();
+  const { selectedPlate, selectedAnnotation, plateAnnotations, dispatch, canUndo, canRedo, undo, redo } = useApp();
   const [image] = useImage(selectedPlate?.imageUrl || '', 'anonymous');
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -85,6 +87,41 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
       trRef.current.getLayer()?.batchDraw();
     }
   }, [selectedAnnotation]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) undo();
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo) redo();
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedAnnotation) {
+          e.preventDefault();
+          dispatch({ type: 'DELETE_ANNOTATION', payload: selectedAnnotation.id });
+        }
+      }
+
+      if (e.key === 'Escape') {
+        setTool('select');
+        setIsPolygonDrawing(false);
+        setPolygonPoints([]);
+        dispatch({ type: 'SELECT_ANNOTATION', payload: null });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, canRedo, undo, redo, selectedAnnotation]);
 
   const getPointerPosition = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = stageRef.current;
@@ -482,6 +519,25 @@ export default function AnnotationCanvas({ defaultDefectType, onDefectTypeChange
               取消多边形
             </Button>
           )}
+
+          <Divider type="vertical" style={{ height: 24 }} />
+
+          <Tooltip title="撤销 (Ctrl+Z)">
+            <Button
+              icon={<UndoOutlined />}
+              size="small"
+              onClick={undo}
+              disabled={!canUndo}
+            />
+          </Tooltip>
+          <Tooltip title="恢复 (Ctrl+Y)">
+            <Button
+              icon={<RedoOutlined />}
+              size="small"
+              onClick={redo}
+              disabled={!canRedo}
+            />
+          </Tooltip>
         </Space>
 
         <Space size="small">
