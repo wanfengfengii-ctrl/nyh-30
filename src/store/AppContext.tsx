@@ -17,10 +17,22 @@ import type {
   ModificationRecord,
   ModificationReason,
   DetectionStatistics,
+  PlateVersion,
+  ComparisonResult,
+  DiffItem,
+  DiffType,
+  ApprovalRecord,
+  ApprovalStatus,
+  VersionChangeHistory,
+  FinalConclusion,
+  FinalConclusionStatus,
+  TrendStatistics,
+  ComparisonViewMode,
 } from '../types';
 import { MOCK_USERS } from '../types';
 import { initialState, State, DEFAULT_FILTERS } from './mockData';
 import { v4 as uuidv4 } from 'uuid';
+import { compareAnnotations } from '../services/comparisonService';
 
 type Action =
   | { type: 'SET_CURRENT_USER'; payload: User }
@@ -51,7 +63,19 @@ type Action =
   | { type: 'SET_FILTERS'; payload: Partial<FilterOptions> }
   | { type: 'RESET_FILTERS' }
   | { type: 'UNDO' }
-  | { type: 'REDO' };
+  | { type: 'REDO' }
+  | { type: 'SELECT_BASE_VERSION'; payload: string | null }
+  | { type: 'SELECT_COMPARE_VERSION'; payload: string | null }
+  | { type: 'SELECT_DIFF_ITEM'; payload: string | null }
+  | { type: 'SET_COMPARISON_VIEW_MODE'; payload: ComparisonViewMode }
+  | { type: 'TOGGLE_SHOW_UNCHANGED'; payload: boolean }
+  | { type: 'ADD_COMPARISON'; payload: ComparisonResult }
+  | { type: 'ADD_APPROVAL_RECORD'; payload: ApprovalRecord }
+  | { type: 'BATCH_APPROVE'; payload: { diffItemIds: string[]; comparisonId: string; status: ApprovalStatus; comment: string; newDefectType?: DefectType; newSeverity?: Severity } }
+  | { type: 'ADD_VERSION_CHANGE_HISTORY'; payload: Omit<VersionChangeHistory, 'id' | 'timestamp'> }
+  | { type: 'ADD_FINAL_CONCLUSION'; payload: Omit<FinalConclusion, 'id' | 'createdAt' | 'updatedAt'> }
+  | { type: 'UPDATE_FINAL_CONCLUSION'; payload: { id: string; data: Partial<FinalConclusion> } }
+  | { type: 'ARCHIVE_FINAL_CONCLUSION'; payload: string };
 
 function addHistoryEntry(
   state: State,
@@ -787,6 +811,108 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case 'SELECT_BASE_VERSION':
+      return { ...state, selectedBaseVersionId: action.payload, selectedDiffItemId: null };
+
+    case 'SELECT_COMPARE_VERSION':
+      return { ...state, selectedCompareVersionId: action.payload, selectedDiffItemId: null };
+
+    case 'SELECT_DIFF_ITEM':
+      return { ...state, selectedDiffItemId: action.payload };
+
+    case 'SET_COMPARISON_VIEW_MODE':
+      return { ...state, comparisonViewMode: action.payload };
+
+    case 'TOGGLE_SHOW_UNCHANGED':
+      return { ...state, showUnchanged: action.payload };
+
+    case 'ADD_COMPARISON': {
+      const existingIndex = state.comparisons.findIndex(
+        (c) =>
+          c.baseVersionId === action.payload.baseVersionId &&
+          c.compareVersionId === action.payload.compareVersionId
+      );
+      let newComparisons;
+      if (existingIndex >= 0) {
+        newComparisons = [...state.comparisons];
+        newComparisons[existingIndex] = action.payload;
+      } else {
+        newComparisons = [...state.comparisons, action.payload];
+      }
+      return { ...state, comparisons: newComparisons };
+    }
+
+    case 'ADD_APPROVAL_RECORD': {
+      const existingIndex = state.approvalRecords.findIndex(
+        (r) => r.diffItemId === action.payload.diffItemId && r.approverId === action.payload.approverId
+      );
+      let newRecords;
+      if (existingIndex >= 0) {
+        newRecords = [...state.approvalRecords];
+        newRecords[existingIndex] = action.payload;
+      } else {
+        newRecords = [...state.approvalRecords, action.payload];
+      }
+      return { ...state, approvalRecords: newRecords };
+    }
+
+    case 'BATCH_APPROVE': {
+      const { diffItemIds, comparisonId, status, comment, newDefectType, newSeverity } = action.payload;
+      const newRecords: ApprovalRecord[] = diffItemIds.map((diffItemId) => ({
+        id: uuidv4(),
+        diffItemId,
+        comparisonId,
+        approverId: state.currentUser.id,
+        approverName: state.currentUser.name,
+        status,
+        comment,
+        newDefectType,
+        newSeverity,
+        createdAt: now,
+      }));
+      const filteredExisting = state.approvalRecords.filter(
+        (r) => !(diffItemIds.includes(r.diffItemId) && r.approverId === state.currentUser.id)
+      );
+      return { ...state, approvalRecords: [...filteredExisting, ...newRecords] };
+    }
+
+    case 'ADD_VERSION_CHANGE_HISTORY': {
+      const newEntry: VersionChangeHistory = {
+        ...action.payload,
+        id: uuidv4(),
+        timestamp: now,
+      };
+      return { ...state, versionChangeHistory: [...state.versionChangeHistory, newEntry] };
+    }
+
+    case 'ADD_FINAL_CONCLUSION': {
+      const newConclusion: FinalConclusion = {
+        ...action.payload,
+        id: uuidv4(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      return { ...state, finalConclusions: [...state.finalConclusions, newConclusion] };
+    }
+
+    case 'UPDATE_FINAL_CONCLUSION': {
+      return {
+        ...state,
+        finalConclusions: state.finalConclusions.map((c) =>
+          c.id === action.payload.id ? { ...c, ...action.payload.data, updatedAt: now } : c
+        ),
+      };
+    }
+
+    case 'ARCHIVE_FINAL_CONCLUSION': {
+      return {
+        ...state,
+        finalConclusions: state.finalConclusions.map((c) =>
+          c.id === action.payload ? { ...c, status: 'archived', updatedAt: now } : c
+        ),
+      };
+    }
+
     default:
       return state;
   }
@@ -832,6 +958,36 @@ interface AppContextType {
   };
   getDetectionStatistics: (plateId?: string) => DetectionStatistics;
   batchAddAnnotations: (annotations: Annotation[]) => void;
+  plateVersions: PlateVersion[];
+  currentPlateVersions: PlateVersion[];
+  selectedBaseVersion: PlateVersion | null;
+  selectedCompareVersion: PlateVersion | null;
+  selectedDiffItem: DiffItem | null;
+  baseVersionAnnotations: Annotation[];
+  compareVersionAnnotations: Annotation[];
+  currentComparison: ComparisonResult | null;
+  comparisonViewMode: ComparisonViewMode;
+  showUnchanged: boolean;
+  filteredDiffItems: DiffItem[];
+  approvalRecords: ApprovalRecord[];
+  diffItemApprovals: ApprovalRecord[];
+  versionChangeHistory: VersionChangeHistory[];
+  finalConclusions: FinalConclusion[];
+  plateFinalConclusions: FinalConclusion[];
+  trendStatistics: TrendStatistics[];
+  selectBaseVersion: (versionId: string | null) => void;
+  selectCompareVersion: (versionId: string | null) => void;
+  selectDiffItem: (diffItemId: string | null) => void;
+  setComparisonViewMode: (mode: ComparisonViewMode) => void;
+  setShowUnchanged: (show: boolean) => void;
+  runComparison: () => void;
+  addApprovalRecord: (record: Omit<ApprovalRecord, 'id' | 'createdAt'>) => void;
+  batchApprove: (diffItemIds: string[], comparisonId: string, status: ApprovalStatus, comment: string, newDefectType?: DefectType, newSeverity?: Severity) => void;
+  addVersionChangeHistory: (entry: Omit<VersionChangeHistory, 'id' | 'timestamp'>) => void;
+  addFinalConclusion: (conclusion: Omit<FinalConclusion, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateFinalConclusion: (id: string, data: Partial<FinalConclusion>) => void;
+  archiveFinalConclusion: (id: string) => void;
+  getDiffItemApprovalStatus: (diffItemId: string) => ApprovalStatus | null;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -961,6 +1117,176 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'BATCH_ADD_ANNOTATIONS', payload: annotations });
   };
 
+  const plateVersions = state.plateVersions;
+  const currentPlateVersions = useMemo(() => {
+    if (!state.selectedPlateId) return [];
+    return state.plateVersions
+      .filter((v) => v.plateId === state.selectedPlateId)
+      .sort((a, b) => a.versionNumber - b.versionNumber);
+  }, [state.plateVersions, state.selectedPlateId]);
+
+  const selectedBaseVersion = useMemo(() => {
+    return state.plateVersions.find((v) => v.id === state.selectedBaseVersionId) || null;
+  }, [state.plateVersions, state.selectedBaseVersionId]);
+
+  const selectedCompareVersion = useMemo(() => {
+    return state.plateVersions.find((v) => v.id === state.selectedCompareVersionId) || null;
+  }, [state.plateVersions, state.selectedCompareVersionId]);
+
+  const baseVersionAnnotations = useMemo(() => {
+    if (!state.selectedBaseVersionId) return [];
+    return state.versionAnnotations[state.selectedBaseVersionId] || [];
+  }, [state.versionAnnotations, state.selectedBaseVersionId]);
+
+  const compareVersionAnnotations = useMemo(() => {
+    if (!state.selectedCompareVersionId) return [];
+    return state.versionAnnotations[state.selectedCompareVersionId] || [];
+  }, [state.versionAnnotations, state.selectedCompareVersionId]);
+
+  const currentComparison = useMemo(() => {
+    if (!state.selectedBaseVersionId || !state.selectedCompareVersionId) return null;
+    return (
+      state.comparisons.find(
+        (c) =>
+          c.baseVersionId === state.selectedBaseVersionId &&
+          c.compareVersionId === state.selectedCompareVersionId
+      ) || null
+    );
+  }, [state.comparisons, state.selectedBaseVersionId, state.selectedCompareVersionId]);
+
+  const selectedDiffItem = useMemo(() => {
+    if (!state.selectedDiffItemId || !currentComparison) return null;
+    return currentComparison.diffItems.find((d) => d.id === state.selectedDiffItemId) || null;
+  }, [state.selectedDiffItemId, currentComparison]);
+
+  const comparisonViewMode = state.comparisonViewMode;
+  const showUnchanged = state.showUnchanged;
+
+  const filteredDiffItems = useMemo(() => {
+    if (!currentComparison) return [];
+    if (state.showUnchanged) return currentComparison.diffItems;
+    return currentComparison.diffItems.filter((d) => d.diffType !== 'unchanged');
+  }, [currentComparison, state.showUnchanged]);
+
+  const approvalRecords = state.approvalRecords;
+
+  const diffItemApprovals = useMemo(() => {
+    if (!state.selectedDiffItemId) return [];
+    return state.approvalRecords
+      .filter((r) => r.diffItemId === state.selectedDiffItemId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [state.approvalRecords, state.selectedDiffItemId]);
+
+  const versionChangeHistory = state.versionChangeHistory;
+
+  const finalConclusions = state.finalConclusions;
+
+  const plateFinalConclusions = useMemo(() => {
+    if (!state.selectedPlateId) return [];
+    return state.finalConclusions
+      .filter((c) => c.plateId === state.selectedPlateId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [state.finalConclusions, state.selectedPlateId]);
+
+  const trendStatistics = state.trendStatistics;
+
+  const selectBaseVersion = (versionId: string | null) => {
+    dispatch({ type: 'SELECT_BASE_VERSION', payload: versionId });
+  };
+
+  const selectCompareVersion = (versionId: string | null) => {
+    dispatch({ type: 'SELECT_COMPARE_VERSION', payload: versionId });
+  };
+
+  const selectDiffItem = (diffItemId: string | null) => {
+    dispatch({ type: 'SELECT_DIFF_ITEM', payload: diffItemId });
+  };
+
+  const setComparisonViewMode = (mode: ComparisonViewMode) => {
+    dispatch({ type: 'SET_COMPARISON_VIEW_MODE', payload: mode });
+  };
+
+  const setShowUnchanged = (show: boolean) => {
+    dispatch({ type: 'TOGGLE_SHOW_UNCHANGED', payload: show });
+  };
+
+  const runComparison = () => {
+    if (!state.selectedPlateId || !state.selectedBaseVersionId || !state.selectedCompareVersionId) return;
+    const baseAnns = state.versionAnnotations[state.selectedBaseVersionId] || [];
+    const compareAnns = state.versionAnnotations[state.selectedCompareVersionId] || [];
+    const result = compareAnnotations(
+      baseAnns,
+      compareAnns,
+      state.selectedPlateId,
+      state.selectedBaseVersionId,
+      state.selectedCompareVersionId,
+      state.currentUser.id,
+      state.currentUser.name
+    );
+    dispatch({ type: 'ADD_COMPARISON', payload: result });
+    dispatch({
+      type: 'ADD_VERSION_CHANGE_HISTORY',
+      payload: {
+        plateId: state.selectedPlateId,
+        versionId: state.selectedBaseVersionId,
+        action: 'compare',
+        userId: state.currentUser.id,
+        userName: state.currentUser.name,
+        description: `与 ${selectedCompareVersion?.versionName || '未知版本'} 进行比对`,
+        details: { compareVersionId: state.selectedCompareVersionId, diffCount: result.summary.totalDiffCount },
+      },
+    });
+  };
+
+  const addApprovalRecord = (record: Omit<ApprovalRecord, 'id' | 'createdAt'>) => {
+    const newRecord: ApprovalRecord = {
+      ...record,
+      id: uuidv4(),
+      createdAt: new Date().toISOString(),
+    };
+    dispatch({ type: 'ADD_APPROVAL_RECORD', payload: newRecord });
+  };
+
+  const batchApprove = (
+    diffItemIds: string[],
+    comparisonId: string,
+    status: ApprovalStatus,
+    comment: string,
+    newDefectType?: DefectType,
+    newSeverity?: Severity
+  ) => {
+    dispatch({
+      type: 'BATCH_APPROVE',
+      payload: { diffItemIds, comparisonId, status, comment, newDefectType, newSeverity },
+    });
+  };
+
+  const addVersionChangeHistory = (entry: Omit<VersionChangeHistory, 'id' | 'timestamp'>) => {
+    dispatch({ type: 'ADD_VERSION_CHANGE_HISTORY', payload: entry });
+  };
+
+  const addFinalConclusion = (conclusion: Omit<FinalConclusion, 'id' | 'createdAt' | 'updatedAt'>) => {
+    dispatch({ type: 'ADD_FINAL_CONCLUSION', payload: conclusion });
+  };
+
+  const updateFinalConclusion = (id: string, data: Partial<FinalConclusion>) => {
+    dispatch({ type: 'UPDATE_FINAL_CONCLUSION', payload: { id, data } });
+  };
+
+  const archiveFinalConclusion = (id: string) => {
+    dispatch({ type: 'ARCHIVE_FINAL_CONCLUSION', payload: id });
+  };
+
+  const getDiffItemApprovalStatus = (diffItemId: string): ApprovalStatus | null => {
+    const approvals = state.approvalRecords.filter((r) => r.diffItemId === diffItemId);
+    if (approvals.length === 0) return null;
+    const approved = approvals.filter((r) => r.status === 'approved').length;
+    const rejected = approvals.filter((r) => r.status === 'rejected').length;
+    if (rejected > 0) return 'rejected';
+    if (approved >= 2) return 'approved';
+    return 'pending';
+  };
+
   const getPlateStatistics = (plateId: string) => {
     const anns = state.annotations.filter((a) => a.plateId === plateId);
     const byType: Record<DefectType, number> = {
@@ -1086,6 +1412,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
         getPlateStatistics,
         getDetectionStatistics,
         batchAddAnnotations,
+        plateVersions,
+        currentPlateVersions,
+        selectedBaseVersion,
+        selectedCompareVersion,
+        selectedDiffItem,
+        baseVersionAnnotations,
+        compareVersionAnnotations,
+        currentComparison,
+        comparisonViewMode,
+        showUnchanged,
+        filteredDiffItems,
+        approvalRecords,
+        diffItemApprovals,
+        versionChangeHistory,
+        finalConclusions,
+        plateFinalConclusions,
+        trendStatistics,
+        selectBaseVersion,
+        selectCompareVersion,
+        selectDiffItem,
+        setComparisonViewMode,
+        setShowUnchanged,
+        runComparison,
+        addApprovalRecord,
+        batchApprove,
+        addVersionChangeHistory,
+        addFinalConclusion,
+        updateFinalConclusion,
+        archiveFinalConclusion,
+        getDiffItemApprovalStatus,
       }}
     >
       {children}

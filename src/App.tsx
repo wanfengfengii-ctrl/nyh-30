@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layout, Tabs, Avatar, Dropdown, Space, Tag } from 'antd';
+import { Layout, Tabs, Avatar, Dropdown, Space, Tag, Radio } from 'antd';
 import {
   FileImageOutlined,
   BarChartOutlined,
@@ -9,6 +9,7 @@ import {
   RobotOutlined,
   ExperimentOutlined,
   AppstoreOutlined,
+  DiffOutlined,
 } from '@ant-design/icons';
 import { AppProvider, useApp } from './store/AppContext';
 import PlateList from './components/PlateList';
@@ -18,6 +19,7 @@ import StatisticsPanel from './components/StatisticsPanel';
 import AutoDetectionPanel from './components/AutoDetectionPanel';
 import DetectionStatisticsPanel from './components/DetectionStatisticsPanel';
 import BatchProcessingPanel from './components/BatchProcessingPanel';
+import ComparisonModule from './components/ComparisonModule';
 import type { DefectType, User } from './types';
 import { USER_ROLE_LABELS } from './types';
 
@@ -25,6 +27,7 @@ const { Header, Sider, Content } = Layout;
 
 function App() {
   const [activeTab, setActiveTab] = useState('detail');
+  const [appMode, setAppMode] = useState<'annotation' | 'comparison'>('annotation');
   const [defaultDefectType, setDefaultDefectType] = useState<DefectType>('scratch');
   const { currentUser, allUsers, setCurrentUser, canUndo, canRedo, undo, redo } = useApp();
 
@@ -122,14 +125,29 @@ function App() {
           flexShrink: 0,
         }}
       >
-        <Space>
-          <FileImageOutlined style={{ fontSize: 20 }} />
-          <h2 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 500 }}>
-            星图底片智能缺陷检测系统
-          </h2>
-          <span style={{ marginLeft: 12, color: '#8c8c8c', fontSize: 12 }}>
-            AI自动检测 · 人工校正 · 复核追踪
-          </span>
+        <Space size="middle">
+          <Space>
+            <FileImageOutlined style={{ fontSize: 20 }} />
+            <h2 style={{ color: '#fff', margin: 0, fontSize: 18, fontWeight: 500 }}>
+              星图底片智能缺陷检测系统
+            </h2>
+          </Space>
+
+          <Radio.Group
+            value={appMode}
+            onChange={(e) => setAppMode(e.target.value)}
+            size="small"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="annotation">
+              <FileImageOutlined style={{ marginRight: 4 }} />
+              标注模式
+            </Radio.Button>
+            <Radio.Button value="comparison">
+              <DiffOutlined style={{ marginRight: 4 }} />
+              比对审定
+            </Radio.Button>
+          </Radio.Group>
         </Space>
 
         <Space size="middle">
@@ -182,46 +200,52 @@ function App() {
         </Space>
       </Header>
 
-      <Layout style={{ height: 'calc(100vh - 56px)', minHeight: 0 }}>
-        <Sider
-          width={280}
-          theme="light"
-          style={{ borderRight: '1px solid #f0f0f0', flexShrink: 0 }}
-        >
-          <PlateList />
-        </Sider>
+      {appMode === 'annotation' ? (
+        <Layout style={{ height: 'calc(100vh - 56px)', minHeight: 0 }}>
+          <Sider
+            width={280}
+            theme="light"
+            style={{ borderRight: '1px solid #f0f0f0', flexShrink: 0 }}
+          >
+            <PlateList />
+          </Sider>
 
-        <Content
-          style={{
-            background: '#f5f5f5',
-            overflow: 'hidden',
-            minWidth: 0,
-            flex: 1,
-            display: 'flex',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <AnnotationCanvas
-              defaultDefectType={defaultDefectType}
-              onDefectTypeChange={setDefaultDefectType}
+          <Content
+            style={{
+              background: '#f5f5f5',
+              overflow: 'hidden',
+              minWidth: 0,
+              flex: 1,
+              display: 'flex',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <AnnotationCanvas
+                defaultDefectType={defaultDefectType}
+                onDefectTypeChange={setDefaultDefectType}
+              />
+            </div>
+          </Content>
+
+          <Sider
+            width={340}
+            theme="light"
+            style={{ borderLeft: '1px solid #f0f0f0', flexShrink: 0 }}
+          >
+            <Tabs
+              activeKey={activeTab}
+              onChange={setActiveTab}
+              items={tabItems as any}
+              size="small"
+              style={{ height: '100%' }}
             />
-          </div>
-        </Content>
-
-        <Sider
-          width={340}
-          theme="light"
-          style={{ borderLeft: '1px solid #f0f0f0', flexShrink: 0 }}
-        >
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={tabItems as any}
-            size="small"
-            style={{ height: '100%' }}
-          />
-        </Sider>
-      </Layout>
+          </Sider>
+        </Layout>
+      ) : (
+        <div style={{ height: 'calc(100vh - 56px)', minHeight: 0 }}>
+          <ComparisonModule />
+        </div>
+      )}
     </Layout>
   );
 }

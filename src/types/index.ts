@@ -234,9 +234,161 @@ export const DETECTION_STATUS_LABELS: Record<DetectionStatus, string> = {
   failed: '检测失败',
 };
 
+export type DiffType = 'added' | 'removed' | 'moved' | 'type_changed' | 'unchanged';
+
+export type ComparisonViewMode = 'split' | 'overlay';
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'merged';
+
+export type FinalConclusionStatus = 'draft' | 'submitted' | 'archived';
+
+export interface PlateVersion {
+  id: string;
+  plateId: string;
+  versionNumber: number;
+  versionName: string;
+  scanDate: string;
+  scanBatch: string;
+  imageUrl: string;
+  thumbnailUrl: string;
+  width: number;
+  height: number;
+  annotationCount: number;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  description: string;
+  isBaseline: boolean;
+}
+
+export interface DiffItem {
+  id: string;
+  diffType: DiffType;
+  oldAnnotationId?: string;
+  newAnnotationId?: string;
+  oldAnnotation?: Annotation;
+  newAnnotation?: Annotation;
+  positionOffset?: { dx: number; dy: number; distance: number };
+  oldType?: DefectType;
+  newType?: DefectType;
+  severity?: Severity;
+  confidence?: number;
+  description?: string;
+}
+
+export interface ComparisonResult {
+  id: string;
+  plateId: string;
+  baseVersionId: string;
+  compareVersionId: string;
+  diffItems: DiffItem[];
+  summary: DiffSummary;
+  comparedAt: string;
+  comparedBy: string;
+  comparedByName: string;
+}
+
+export interface DiffSummary {
+  totalDiffCount: number;
+  addedCount: number;
+  removedCount: number;
+  movedCount: number;
+  typeChangedCount: number;
+  unchangedCount: number;
+  byType: Record<DefectType, { added: number; removed: number; moved: number; typeChanged: number }>;
+}
+
+export interface ApprovalRecord {
+  id: string;
+  diffItemId: string;
+  comparisonId: string;
+  approverId: string;
+  approverName: string;
+  status: ApprovalStatus;
+  comment: string;
+  newDefectType?: DefectType;
+  newSeverity?: Severity;
+  createdAt: string;
+}
+
+export interface VersionChangeHistory {
+  id: string;
+  plateId: string;
+  versionId: string;
+  action: 'create' | 'update' | 'compare' | 'approve' | 'archive';
+  userId: string;
+  userName: string;
+  timestamp: string;
+  description: string;
+  details?: Record<string, any>;
+}
+
+export interface FinalConclusion {
+  id: string;
+  plateId: string;
+  versionIds: string[];
+  title: string;
+  content: string;
+  status: FinalConclusionStatus;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+  reviewerIds: string[];
+  reviewerNames: string[];
+  approvedCount: number;
+  totalReviewers: number;
+  attachments?: string[];
+}
+
+export interface TrendStatistics {
+  date: string;
+  totalDefects: number;
+  addedDefects: number;
+  removedDefects: number;
+  byType: Record<DefectType, number>;
+}
+
+export const DIFF_TYPE_LABELS: Record<DiffType, string> = {
+  added: '新增缺陷',
+  removed: '消失缺陷',
+  moved: '位置偏移',
+  type_changed: '类型变更',
+  unchanged: '无变化',
+};
+
+export const DIFF_TYPE_COLORS: Record<DiffType, string> = {
+  added: '#52c41a',
+  removed: '#ff4d4f',
+  moved: '#faad14',
+  type_changed: '#1890ff',
+  unchanged: '#8c8c8c',
+};
+
+export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
+  pending: '待审定',
+  approved: '已确认',
+  rejected: '已驳回',
+  merged: '已合并',
+};
+
+export const APPROVAL_STATUS_COLORS: Record<ApprovalStatus, string> = {
+  pending: 'orange',
+  approved: 'green',
+  rejected: 'red',
+  merged: 'blue',
+};
+
+export const FINAL_CONCLUSION_STATUS_LABELS: Record<FinalConclusionStatus, string> = {
+  draft: '草稿',
+  submitted: '已提交',
+  archived: '已归档',
+};
+
 export const MOCK_USERS: User[] = [
   { id: 'user-1', name: '张标注', role: 'annotator' },
   { id: 'user-2', name: '李复核', role: 'reviewer' },
   { id: 'user-3', name: '王管理', role: 'admin' },
   { id: 'user-4', name: '赵标注', role: 'annotator' },
+  { id: 'user-5', name: '陈研究员', role: 'reviewer' },
 ];
