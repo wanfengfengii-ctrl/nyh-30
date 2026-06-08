@@ -41,6 +41,7 @@ export interface HistoryEntry {
   timestamp: string;
   beforeData?: Partial<Annotation>;
   afterData?: Partial<Annotation>;
+  reviewRecords?: ReviewRecord[];
   description: string;
 }
 

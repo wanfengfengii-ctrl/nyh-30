@@ -45,7 +45,8 @@ function addHistoryEntry(
   action: HistoryEntry['action'],
   description: string,
   beforeData?: Partial<Annotation>,
-  afterData?: Partial<Annotation>
+  afterData?: Partial<Annotation>,
+  reviewRecords?: ReviewRecord[]
 ): HistoryEntry {
   return {
     id: uuidv4(),
@@ -56,6 +57,7 @@ function addHistoryEntry(
     timestamp: new Date().toISOString(),
     beforeData,
     afterData,
+    reviewRecords,
     description,
   };
 }
@@ -122,7 +124,9 @@ function reducer(state: State, action: Action): State {
         state,
         newAnnotation.id,
         'create',
-        `创建${newAnnotation.shape === 'rectangle' ? '矩形' : newAnnotation.shape === 'circle' ? '圆形' : '多边形'}标注`
+        `创建${newAnnotation.shape === 'rectangle' ? '矩形' : newAnnotation.shape === 'circle' ? '圆形' : '多边形'}标注`,
+        undefined,
+        newAnnotation as Partial<Annotation>
       );
       return {
         ...state,
@@ -146,7 +150,14 @@ function reducer(state: State, action: Action): State {
         createdAt: now,
         updatedAt: now,
       };
-      const historyEntry = addHistoryEntry(state, newAnnotation.id, 'create', '创建圆形标注');
+      const historyEntry = addHistoryEntry(
+        state,
+        newAnnotation.id,
+        'create',
+        '创建圆形标注',
+        undefined,
+        newAnnotation as Partial<Annotation>
+      );
       return {
         ...state,
         annotations: [...state.annotations, newAnnotation as Annotation],
@@ -169,7 +180,14 @@ function reducer(state: State, action: Action): State {
         createdAt: now,
         updatedAt: now,
       };
-      const historyEntry = addHistoryEntry(state, newAnnotation.id, 'create', '创建多边形标注');
+      const historyEntry = addHistoryEntry(
+        state,
+        newAnnotation.id,
+        'create',
+        '创建多边形标注',
+        undefined,
+        newAnnotation as Partial<Annotation>
+      );
       return {
         ...state,
         annotations: [...state.annotations, newAnnotation as Annotation],
